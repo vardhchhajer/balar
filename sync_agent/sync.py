@@ -77,7 +77,7 @@ def fetch_orders(conn):
             so.Total_Bales
         FROM SALES_ORDER so
         LEFT JOIN LEDGER_MASTER lm ON so.Lgr_Id = lm.Lgr_Id
-        WHERE so.Order_Date IS NOT NULL
+        WHERE so.Order_Date >= DATEADD(YEAR, -1, GETDATE())
         ORDER BY so.Order_Date DESC
     """)
     orders = []
@@ -116,6 +116,9 @@ def fetch_order_items(conn):
             sod.Remark
         FROM SALES_ORDER_DETAIL sod
         LEFT JOIN ITEM_MASTER im ON sod.Item_Id = im.Item_Id
+        WHERE sod.Sal_Order_Id IN (
+            SELECT Sal_Order_Id FROM SALES_ORDER WHERE Order_Date >= DATEADD(YEAR, -1, GETDATE())
+        )
     """)
     items = {}
     for row in cursor.fetchall():
@@ -155,7 +158,7 @@ def fetch_invoices(conn):
             CAST(si.Lgr_Id AS VARCHAR)
         FROM SALES_INVOICE si
         LEFT JOIN LEDGER_MASTER lm ON si.Lgr_Id = lm.Lgr_Id
-        WHERE si.Sal_Inv_Vdate IS NOT NULL
+        WHERE si.Sal_Inv_Vdate >= DATEADD(YEAR, -1, GETDATE())
         ORDER BY si.Sal_Inv_Vdate DESC
     """)
     invoices = []
@@ -182,15 +185,15 @@ def fetch_invoices(conn):
 def fetch_parties(conn):
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT
+        SELECT DISTINCT
             lm.Lgr_Id,
             lm.Lgr_name,
             lm.Lgr_Mobile,
             lm.Lgr_Email,
             lm.Lgr_Add1,
-            ld.Agent_Id
+            (SELECT TOP 1 ld.Agent_Id FROM LEDGER_DETAIL ld WHERE ld.Lgr_Id = lm.Lgr_Id AND ld.Agent_Id IS NOT NULL) AS Agent_Id
         FROM LEDGER_MASTER lm
-        LEFT JOIN LEDGER_DETAIL ld ON lm.Lgr_Id = ld.Lgr_Id
+        WHERE lm.Lgr_Id IN (SELECT DISTINCT Lgr_Id FROM SALES_ORDER)
     """)
     parties = []
     for row in cursor.fetchall():
