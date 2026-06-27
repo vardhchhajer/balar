@@ -218,8 +218,10 @@ def push_to_cloud(token, data):
         f"{API_URL}/admin/sync/receive",
         json=data,
         headers=headers,
-        timeout=120,
+        timeout=300,
     )
+    if response.status_code != 200:
+        logger.error(f"Server response ({response.status_code}): {response.text[:1000]}")
     response.raise_for_status()
     return response.json()
 

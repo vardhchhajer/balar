@@ -176,6 +176,7 @@ async def receive_sync_data(
 ):
     """Receive synced data from the on-premise sync agent."""
     from datetime import datetime
+    from sqlalchemy import delete, text
     from app.models.order import Order, OrderItem
 
     try:
@@ -185,10 +186,10 @@ async def receive_sync_data(
         parties_data = data.get("parties", [])
         total_records = data.get("total_records", 0)
 
-        # Clear existing synced orders and items
-        existing_orders = await db.execute(select(Order))
-        for order in existing_orders.scalars().all():
-            await db.delete(order)
+        # Delete existing data - items first (foreign key), then orders
+        await db.execute(delete(OrderItem))
+        await db.execute(delete(Order))
+        await db.flush()
 
         # Insert fresh order data
         orders_created = 0
@@ -196,29 +197,39 @@ async def receive_sync_data(
 
         for order_data in orders_data:
             erp_id = order_data.get("erp_order_id")
+            
+            # Calculate total amount from items
+            items_for_order = order_items_data.get(str(erp_id), [])
+            total_amount = 0.0
+            for item in items_for_order:
+                rate = float(item.get("rate", 0))
+                qty = float(item.get("bales", 0) or item.get("pieces", 0) or item.get("meter", 0) or 0)
+                total_amount += rate * qty
+
             order = Order(
                 party_code=str(order_data.get("party_code", "")),
-                order_no=order_data.get("order_no", f"ORD-{erp_id}"),
+                order_no=order_data.get("order_no", f"ORD-{erp_id}") or f"ORD-{erp_id}",
                 order_date=datetime.fromisoformat(order_data["order_date"]).date() if order_data.get("order_date") else datetime.now().date(),
                 dispatch_status="Stopped" if order_data.get("is_stopped") else (order_data.get("flag") or "Pending"),
                 dispatch_date=datetime.fromisoformat(order_data["vch_date"]).date() if order_data.get("vch_date") else None,
                 invoice_no=None,
                 tracking_no=None,
-                total_amount=float(order_data.get("total_qty", 0)) * float(order_items_data.get(str(erp_id), [{}])[0].get("rate", 0)) if order_items_data.get(str(erp_id)) else 0,
+                total_amount=total_amount,
                 remarks=order_data.get("narration"),
             )
             db.add(order)
             await db.flush()
 
             # Add items for this order
-            items_for_order = order_items_data.get(str(erp_id), [])
             for item_data in items_for_order:
+                rate = float(item_data.get("rate", 0))
+                qty = float(item_data.get("bales", 0) or item_data.get("pieces", 0) or item_data.get("meter", 0) or 1)
                 item = OrderItem(
                     order_id=order.id,
                     product_name=item_data.get("product_name", "Unknown"),
-                    quantity=item_data.get("bales", 0) or item_data.get("pieces", 0) or 1,
-                    unit_price=float(item_data.get("rate", 0)),
-                    amount=float(item_data.get("meter", 0)) * float(item_data.get("rate", 0)),
+                    quantity=int(qty) if qty else 1,
+                    unit_price=rate,
+                    amount=rate * qty,
                 )
                 db.add(item)
                 items_created += 1
@@ -243,13 +254,15 @@ async def receive_sync_data(
         }
 
     except Exception as e:
+        await db.rollback()
         # Log the error in sync status
-        sync = SyncStatus(
-            last_sync_time=datetime.now(),
-            status="failed",
-            records_synced=0,
-            error_message=str(e)[:500],
-            triggered_by="sync_agent",
-        )
-        db.add(sync)
-        raise HTTPException(status_code=500, detail=f"Sync processing failed: {str(e)[:100]}")
+        async with db.begin():
+            sync = SyncStatus(
+                last_sync_time=datetime.now(),
+                status="failed",
+                records_synced=0,
+                error_message=str(e)[:500],
+                triggered_by="sync_agent",
+            )
+            db.add(sync)
+        raise HTTPException(status_code=500, detail=f"Sync processing failed: {str(e)[:200]}")
