@@ -1,0 +1,7 @@
+__pycache__
+*.pyc
+.env
+order_tracker.db
+balar.db
+venv/
+.git
