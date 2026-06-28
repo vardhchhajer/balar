@@ -220,8 +220,8 @@ async def receive_sync_data(
                 existing_order.dispatch_status = "Stopped" if order_data.get("is_stopped") else (order_data.get("flag") or "Pending")
                 existing_order.total_amount = total_amount
                 existing_order.remarks = order_data.get("narration")
-                if order_data.get("vch_date"):
-                    existing_order.dispatch_date = datetime.fromisoformat(order_data["vch_date"]).date()
+                if order_data.get("dispatch_date"):
+                    existing_order.dispatch_date = datetime.fromisoformat(order_data["dispatch_date"]).date()
 
                 # Delete old items and re-insert
                 await db.execute(delete(OrderItem).where(OrderItem.order_id == existing_order.id))
@@ -235,7 +235,7 @@ async def receive_sync_data(
                     order_no=order_data.get("order_no", f"ORD-{erp_id}") or f"ORD-{erp_id}",
                     order_date=datetime.fromisoformat(order_data["order_date"]).date() if order_data.get("order_date") else datetime.now().date(),
                     dispatch_status="Stopped" if order_data.get("is_stopped") else (order_data.get("flag") or "Pending"),
-                    dispatch_date=datetime.fromisoformat(order_data["vch_date"]).date() if order_data.get("vch_date") else None,
+                    dispatch_date=datetime.fromisoformat(order_data["dispatch_date"]).date() if order_data.get("dispatch_date") else None,
                     invoice_no=None,
                     tracking_no=None,
                     total_amount=total_amount,
