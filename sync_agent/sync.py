@@ -84,12 +84,21 @@ def fetch_orders(conn):
              WHERE si.ConfNo = so.ConfNo 
                AND si.ConfNo IS NOT NULL 
                AND si.ConfNo != 0
+               AND si.Sal_Inv_Vdate >= so.Order_Date
             ) AS Dispatch_Date,
             so.Stop,
             so.FLAG,
             so.Narration1,
             so.TotalQty,
-            so.Total_Bales
+            so.Total_Bales,
+            (SELECT ISNULL(SUM(sid.Sal_Inv_Qty), 0)
+             FROM SALES_INVOICE si2
+             JOIN SALES_INVOICE_DETAIL sid ON si2.Sal_Inv_Id = sid.Sal_Inv_Id
+             WHERE si2.ConfNo = so.ConfNo
+               AND si2.ConfNo IS NOT NULL
+               AND si2.ConfNo != 0
+               AND si2.Sal_Inv_Vdate >= so.Order_Date
+            ) AS Dispatched_Qty
         FROM SALES_ORDER so
         LEFT JOIN LEDGER_MASTER lm ON so.Lgr_Id = lm.Lgr_Id
         WHERE so.Order_Date >= DATEADD(YEAR, -1, GETDATE())
@@ -97,17 +106,30 @@ def fetch_orders(conn):
     """)
     orders = []
     for row in cursor.fetchall():
-        # Map FLAG to readable status
+        # Determine dispatch status using FLAG + actual dispatch quantities
         flag = str(row[9] or "").strip()
-        flag_map = {
-            "S": "Dispatched",
-            "D": "Delivered",
-            "P": "Pending",
-            "C": "Cancelled",
-            "R": "Processing",
-            "O": "Pending",
-        }
-        dispatch_status = flag_map.get(flag.upper(), flag if len(flag) > 1 else "Pending")
+        order_qty = float(row[11]) if row[11] else 0
+        dispatched_qty = float(row[13]) if row[13] else 0
+        dispatch_date = date_to_str(row[7])
+        order_date = date_to_str(row[6])
+
+        # Determine status based on actual data
+        if row[8]:  # is_stopped
+            dispatch_status = "Stopped"
+        elif flag.upper() == "C":
+            dispatch_status = "Cancelled"
+        elif dispatched_qty > 0 and order_qty > 0 and dispatched_qty < order_qty:
+            dispatch_status = "Partially Dispatched"
+        elif dispatched_qty > 0 and dispatch_date:
+            dispatch_status = "Dispatched"
+        elif flag.upper() == "S" and dispatch_date:
+            dispatch_status = "Dispatched"
+        elif flag.upper() == "D":
+            dispatch_status = "Delivered"
+        elif flag.upper() == "R":
+            dispatch_status = "Processing"
+        else:
+            dispatch_status = "Pending"
 
         # Use ConfNo as order number if Sales_OrderNo is empty or just "."
         raw_order_no = str(row[1] or "").strip()
@@ -124,12 +146,12 @@ def fetch_orders(conn):
             "party_name": str(row[3] or "").strip(),
             "party_code": str(row[4] or "").strip(),
             "agent_id": row[5],
-            "order_date": date_to_str(row[6]),
-            "dispatch_date": date_to_str(row[7]),
+            "order_date": order_date,
+            "dispatch_date": dispatch_date,
             "is_stopped": bool(row[8]) if row[8] else False,
             "flag": dispatch_status,
             "narration": str(row[10] or "").strip(),
-            "total_qty": float(row[11]) if row[11] else 0,
+            "total_qty": order_qty,
             "total_bales": row[12] or 0,
         })
     logger.info(f"Fetched {len(orders)} orders")
