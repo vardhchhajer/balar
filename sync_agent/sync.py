@@ -476,7 +476,7 @@ def run_sync():
 
         logger.info(
             f"Prepared {len(orders_with_amount)} orders with invoiced items "
-            f"(skipped {orders_skipped} with ₹0 or no ConfNo)"
+            f"(skipped {orders_skipped} with Rs.0 or no ConfNo)"
         )
 
         # Step 4: Push order data to cloud
