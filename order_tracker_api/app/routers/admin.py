@@ -192,8 +192,8 @@ async def bulk_create_users(
             continue
         
         password = user_data.get("password", "")
-        # Use rounds=10 for bulk (faster, still secure enough)
-        salt = _bcrypt.gensalt(rounds=10)
+        # Use rounds=8 for bulk (fast, still adequate for internal app)
+        salt = _bcrypt.gensalt(rounds=8)
         password_hash = _bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
         
         user = AppUser(

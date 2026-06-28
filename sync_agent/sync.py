@@ -256,11 +256,29 @@ def push_to_cloud(token, data):
 
 
 def auto_create_users(token, parties):
-    """Bulk create app users for any new parties found during sync."""
+    """Create users only for NEW parties (checks existing first)."""
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     
+    # First, get list of existing users from server
+    response = requests.get(f"{API_URL}/admin/users", headers=headers, timeout=30)
+    if response.status_code != 200:
+        logger.error("Could not fetch existing users, skipping auto-create")
+        return
+    
+    existing_party_codes = {u["party_code"] for u in response.json() if u.get("party_code")}
+    
+    # Only create users for parties that don't have accounts yet
+    new_parties = [p for p in parties if str(p["lgr_id"]) not in existing_party_codes]
+    
+    if not new_parties:
+        logger.info("No new parties to create accounts for")
+        return
+    
+    logger.info(f"Creating accounts for {len(new_parties)} new parties...")
+    
+    # Send only new users in bulk (much smaller payload)
     users_to_create = []
-    for party in parties:
+    for party in new_parties:
         lgr_id = party["lgr_id"]
         name = party["name"] or f"Party {lgr_id}"
         clean = name.strip().split()[0].lower() if name.strip() else "user"
@@ -274,16 +292,15 @@ def auto_create_users(token, parties):
             "full_name": name,
         })
     
-    # Send all users in one request
     response = requests.post(
         f"{API_URL}/admin/users/bulk",
         json={"users": users_to_create},
         headers=headers,
-        timeout=300,
+        timeout=600,
     )
     if response.status_code == 200:
         result = response.json()
-        logger.info(f"Bulk users: {result.get('created', 0)} new, {result.get('skipped', 0)} existing")
+        logger.info(f"Created {result.get('created', 0)} new accounts")
     else:
         logger.error(f"Bulk create failed: {response.text[:200]}")
     
