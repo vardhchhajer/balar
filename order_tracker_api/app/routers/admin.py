@@ -168,6 +168,51 @@ async def force_sync(
     return {"message": "Sync requested. The sync agent will process this shortly."}
 
 
+@router.post("/users/bulk")
+async def bulk_create_users(
+    data: dict,
+    admin: AppUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bulk create users - skips existing ones, fast bcrypt with lower rounds for bulk."""
+    import bcrypt as _bcrypt
+    
+    users_list = data.get("users", [])
+    created = 0
+    skipped = 0
+    
+    # Get all existing usernames in one query
+    result = await db.execute(select(AppUser.username))
+    existing_usernames = {row[0] for row in result.fetchall()}
+    
+    for user_data in users_list:
+        username = user_data.get("username", "")
+        if not username or username in existing_usernames:
+            skipped += 1
+            continue
+        
+        password = user_data.get("password", "")
+        # Use rounds=10 for bulk (faster, still secure enough)
+        salt = _bcrypt.gensalt(rounds=10)
+        password_hash = _bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+        
+        user = AppUser(
+            username=username,
+            password_hash=password_hash,
+            role=user_data.get("role", "party"),
+            party_code=user_data.get("party_code"),
+            agent_code=user_data.get("agent_code"),
+            full_name=user_data.get("full_name", ""),
+            email=user_data.get("email"),
+            is_active=True,
+        )
+        db.add(user)
+        existing_usernames.add(username)
+        created += 1
+    
+    return {"created": created, "skipped": skipped, "total": len(users_list)}
+
+
 @router.post("/sync/receive")
 async def receive_sync_data(
     data: dict,

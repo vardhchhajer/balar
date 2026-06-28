@@ -255,6 +255,41 @@ def push_to_cloud(token, data):
     return response.json()
 
 
+def auto_create_users(token, parties):
+    """Bulk create app users for any new parties found during sync."""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    
+    users_to_create = []
+    for party in parties:
+        lgr_id = party["lgr_id"]
+        name = party["name"] or f"Party {lgr_id}"
+        clean = name.strip().split()[0].lower() if name.strip() else "user"
+        clean = ''.join(c for c in clean if c.isalnum())[:10]
+        
+        users_to_create.append({
+            "username": f"{clean}{lgr_id}",
+            "password": f"party{lgr_id}",
+            "role": "party",
+            "party_code": str(lgr_id),
+            "full_name": name,
+        })
+    
+    # Send all users in one request
+    response = requests.post(
+        f"{API_URL}/admin/users/bulk",
+        json={"users": users_to_create},
+        headers=headers,
+        timeout=300,
+    )
+    if response.status_code == 200:
+        result = response.json()
+        logger.info(f"Bulk users: {result.get('created', 0)} new, {result.get('skipped', 0)} existing")
+    else:
+        logger.error(f"Bulk create failed: {response.text[:200]}")
+    
+    return
+
+
 def run_sync():
     logger.info("=" * 50)
     logger.info("Starting sync...")
@@ -291,6 +326,10 @@ def run_sync():
             "total_records": len(orders) + len(invoices) + len(parties),
         }
         result = push_to_cloud(token, sync_data)
+
+        # Auto-create user accounts for any new parties
+        logger.info("Checking for new party accounts...")
+        auto_create_users(token, parties)
 
         elapsed = time.time() - start_time
         logger.info(f"Sync completed in {elapsed:.1f}s - {result}")
