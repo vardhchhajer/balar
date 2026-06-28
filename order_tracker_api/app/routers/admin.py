@@ -265,8 +265,12 @@ async def receive_sync_data(
                 existing_order.dispatch_status = "Stopped" if order_data.get("is_stopped") else (order_data.get("flag") or "Pending")
                 existing_order.total_amount = total_amount
                 existing_order.remarks = order_data.get("narration")
+                if order_data.get("order_date"):
+                    existing_order.order_date = datetime.fromisoformat(order_data["order_date"]).date()
                 if order_data.get("dispatch_date"):
                     existing_order.dispatch_date = datetime.fromisoformat(order_data["dispatch_date"]).date()
+                else:
+                    existing_order.dispatch_date = None
 
                 # Delete old items and re-insert
                 await db.execute(delete(OrderItem).where(OrderItem.order_id == existing_order.id))

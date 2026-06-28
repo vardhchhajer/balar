@@ -1,5 +1,6 @@
 import os
 import sys
+import csv
 import time
 import logging
 from datetime import datetime, date
@@ -51,11 +52,15 @@ def get_admin_token():
 
 
 def date_to_str(val):
+    """Convert date/datetime to ISO string (YYYY-MM-DD). Returns None for NULL."""
     if val is None:
         return None
     if isinstance(val, (datetime, date)):
         return val.isoformat()[:10]
-    return str(val)
+    s = str(val).strip()
+    if not s or s == "None":
+        return None
+    return s[:10]
 
 
 def fetch_orders(conn):
@@ -66,10 +71,15 @@ def fetch_orders(conn):
             so.Sales_OrderNo,
             so.ConfNo,
             lm.Lgr_name,
-            CAST(so.Lgr_Id AS VARCHAR),
+            LTRIM(RTRIM(CAST(so.Lgr_Id AS VARCHAR(50)))) AS party_code,
             so.Agent_Id,
             so.Order_Date,
-            (SELECT MAX(si.Sal_Inv_Vdate) FROM SALES_INVOICE si WHERE si.ConfNo = so.ConfNo) AS Dispatch_Date,
+            (SELECT MAX(si.Sal_Inv_Vdate) 
+             FROM SALES_INVOICE si 
+             WHERE si.ConfNo = so.ConfNo 
+               AND si.ConfNo IS NOT NULL 
+               AND si.ConfNo != 0
+            ) AS Dispatch_Date,
             so.Stop,
             so.FLAG,
             so.Narration1,
@@ -83,7 +93,7 @@ def fetch_orders(conn):
     orders = []
     for row in cursor.fetchall():
         # Map FLAG to readable status
-        flag = row[9] or ""
+        flag = (row[9] or "").strip()
         flag_map = {
             "S": "Dispatched",
             "D": "Delivered",
@@ -95,24 +105,25 @@ def fetch_orders(conn):
         dispatch_status = flag_map.get(flag.upper(), flag if len(flag) > 1 else "Pending")
 
         # Use ConfNo as order number if Sales_OrderNo is empty or just "."
-        raw_order_no = row[1]
-        if not raw_order_no or raw_order_no.strip() in ("", "."):
-            order_no = f"ORD-{row[2]}"
+        raw_order_no = (row[1] or "").strip()
+        conf_no = row[2]
+        if not raw_order_no or raw_order_no in ("", "."):
+            order_no = f"ORD-{conf_no}" if conf_no else f"ORD-{row[0]}"
         else:
             order_no = raw_order_no
 
         orders.append({
             "erp_order_id": row[0],
             "order_no": order_no,
-            "conf_no": row[2],
-            "party_name": row[3],
-            "party_code": row[4],
+            "conf_no": conf_no,
+            "party_name": (row[3] or "").strip(),
+            "party_code": (row[4] or "").strip(),
             "agent_id": row[5],
             "order_date": date_to_str(row[6]),
             "dispatch_date": date_to_str(row[7]),
             "is_stopped": bool(row[8]) if row[8] else False,
             "flag": dispatch_status,
-            "narration": row[10],
+            "narration": (row[10] or "").strip(),
             "total_qty": float(row[11]) if row[11] else 0,
             "total_bales": row[12] or 0,
         })
@@ -136,9 +147,9 @@ def fetch_order_items(conn):
         JOIN SALES_INVOICE_DETAIL sid ON si.Sal_Inv_Id = sid.Sal_Inv_Id
         LEFT JOIN ITEM_MASTER im ON sid.Item_Id = im.Item_Id
         WHERE si.Sal_Inv_Vdate >= DATEADD(YEAR, -1, GETDATE())
-        AND si.ConfNo IS NOT NULL
+          AND si.ConfNo IS NOT NULL
+          AND si.ConfNo != 0
     """)
-    # Group by ConfNo (which links to SALES_ORDER.ConfNo)
     items = {}
     for row in cursor.fetchall():
         conf_no = row[0]
@@ -157,18 +168,19 @@ def fetch_order_items(conn):
             amount = (qty or pcs) * rate
         
         items[conf_no].append({
-            "product_name": row[1] or "Unknown Item",
+            "product_name": (row[1] or "Unknown Item").strip(),
             "pieces": pcs,
             "quantity": qty or pcs or 1,
             "rate": rate,
             "amount": amount,
-            "bill_no": row[6],
+            "bill_no": (row[6] or "").strip(),
         })
-    logger.info(f"Fetched invoice items for {len(items)} orders")
+    logger.info(f"Fetched invoice items for {len(items)} orders (ConfNos)")
     return items
 
 
 def fetch_invoices(conn):
+    """Fetch invoices for reference data."""
     cursor = conn.cursor()
     cursor.execute("""
         SELECT
@@ -184,7 +196,7 @@ def fetch_invoices(conn):
             si.Sal_Inv_BalesTotal,
             si.Flag,
             lm.Lgr_name,
-            CAST(si.Lgr_Id AS VARCHAR)
+            LTRIM(RTRIM(CAST(si.Lgr_Id AS VARCHAR(50)))) AS party_code
         FROM SALES_INVOICE si
         LEFT JOIN LEDGER_MASTER lm ON si.Lgr_Id = lm.Lgr_Id
         WHERE si.Sal_Inv_Vdate >= DATEADD(YEAR, -1, GETDATE())
@@ -194,33 +206,37 @@ def fetch_invoices(conn):
     for row in cursor.fetchall():
         invoices.append({
             "erp_invoice_id": row[0],
-            "bill_no": row[1],
+            "bill_no": (row[1] or "").strip(),
             "invoice_date": date_to_str(row[2]),
             "conf_no": row[3],
-            "order_no": row[4],
-            "lr_no": row[5],
+            "order_no": (row[4] or "").strip(),
+            "lr_no": (row[5] or "").strip(),
             "lr_date": date_to_str(row[6]),
             "net_total": float(row[7]) if row[7] else 0,
             "pcs_total": row[8] or 0,
             "bales_total": row[9] or 0,
-            "flag": row[10],
-            "party_name": row[11],
-            "party_code": row[12],
+            "flag": (row[10] or "").strip(),
+            "party_name": (row[11] or "").strip(),
+            "party_code": (row[12] or "").strip(),
         })
     logger.info(f"Fetched {len(invoices)} invoices")
     return invoices
 
 
 def fetch_parties(conn):
+    """Fetch all parties that have at least one sales order."""
     cursor = conn.cursor()
     cursor.execute("""
         SELECT DISTINCT
             lm.Lgr_Id,
-            lm.Lgr_name,
+            LTRIM(RTRIM(lm.Lgr_name)) AS Lgr_name,
             lm.Lgr_Mobile,
             lm.Lgr_Email,
             lm.Lgr_Add1,
-            (SELECT TOP 1 ld.Agent_Id FROM LEDGER_DETAIL ld WHERE ld.Lgr_Id = lm.Lgr_Id AND ld.Agent_Id IS NOT NULL) AS Agent_Id
+            (SELECT TOP 1 ld.Agent_Id 
+             FROM LEDGER_DETAIL ld 
+             WHERE ld.Lgr_Id = lm.Lgr_Id AND ld.Agent_Id IS NOT NULL
+            ) AS Agent_Id
         FROM LEDGER_MASTER lm
         WHERE lm.Lgr_Id IN (SELECT DISTINCT Lgr_Id FROM SALES_ORDER)
     """)
@@ -228,14 +244,47 @@ def fetch_parties(conn):
     for row in cursor.fetchall():
         parties.append({
             "lgr_id": row[0],
-            "name": row[1],
-            "mobile": row[2],
-            "email": row[3],
-            "address": row[4],
+            "name": (row[1] or "").strip(),
+            "mobile": (row[2] or "").strip(),
+            "email": (row[3] or "").strip(),
+            "address": (row[4] or "").strip(),
             "agent_id": row[5],
         })
     logger.info(f"Fetched {len(parties)} parties")
     return parties
+
+
+def fetch_agents(conn):
+    """
+    Fetch all agents from ERP.
+    Agents are referenced by Agent_Id in SALES_ORDER — their names are in LEDGER_MASTER.
+    """
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT DISTINCT
+            so.Agent_Id,
+            lm.Lgr_name,
+            lm.Lgr_Mobile,
+            lm.Lgr_Email
+        FROM SALES_ORDER so
+        LEFT JOIN LEDGER_MASTER lm ON so.Agent_Id = lm.Lgr_Id
+        WHERE so.Agent_Id IS NOT NULL
+          AND so.Agent_Id != 0
+          AND so.Order_Date >= DATEADD(YEAR, -1, GETDATE())
+    """)
+    agents = []
+    for row in cursor.fetchall():
+        agent_id = row[0]
+        if not agent_id:
+            continue
+        agents.append({
+            "agent_id": agent_id,
+            "name": (row[1] or f"Agent {agent_id}").strip(),
+            "mobile": (row[2] or "").strip(),
+            "email": (row[3] or "").strip(),
+        })
+    logger.info(f"Fetched {len(agents)} agents")
+    return agents
 
 
 def push_to_cloud(token, data):
@@ -255,35 +304,35 @@ def push_to_cloud(token, data):
     return response.json()
 
 
-def auto_create_users(token, parties):
-    """Create users only for NEW parties (checks existing first)."""
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+def auto_create_users(token, parties, agents):
+    """
+    Create user accounts for ALL new parties and agents.
     
-    # First, get list of existing users from server
+    Party credentials:  username={first_name}{lgr_id}, password=party{lgr_id}
+    Agent credentials:  username={first_name}{agent_id}, password=agent{agent_id}
+    """
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    # Get existing users from server
     response = requests.get(f"{API_URL}/admin/users", headers=headers, timeout=30)
     if response.status_code != 200:
         logger.error("Could not fetch existing users, skipping auto-create")
         return
-    
-    existing_party_codes = {u["party_code"] for u in response.json() if u.get("party_code")}
-    
-    # Only create users for parties that don't have accounts yet
-    new_parties = [p for p in parties if str(p["lgr_id"]) not in existing_party_codes]
-    
-    if not new_parties:
-        logger.info("No new parties to create accounts for")
-        return
-    
-    logger.info(f"Creating accounts for {len(new_parties)} new parties...")
-    
-    # Send only new users in bulk (much smaller payload)
+
+    existing_users = response.json()
+    existing_party_codes = {u["party_code"] for u in existing_users if u.get("party_code")}
+    existing_agent_codes = {u["agent_code"] for u in existing_users if u.get("agent_code")}
+
     users_to_create = []
+
+    # --- Party users ---
+    new_parties = [p for p in parties if str(p["lgr_id"]) not in existing_party_codes]
     for party in new_parties:
         lgr_id = party["lgr_id"]
         name = party["name"] or f"Party {lgr_id}"
         clean = name.strip().split()[0].lower() if name.strip() else "user"
         clean = ''.join(c for c in clean if c.isalnum())[:10]
-        
+
         users_to_create.append({
             "username": f"{clean}{lgr_id}",
             "password": f"party{lgr_id}",
@@ -291,7 +340,29 @@ def auto_create_users(token, parties):
             "party_code": str(lgr_id),
             "full_name": name,
         })
-    
+
+    # --- Agent users ---
+    new_agents = [a for a in agents if str(a["agent_id"]) not in existing_agent_codes]
+    for agent in new_agents:
+        agent_id = agent["agent_id"]
+        name = agent["name"] or f"Agent {agent_id}"
+        clean = name.strip().split()[0].lower() if name.strip() else "agent"
+        clean = ''.join(c for c in clean if c.isalnum())[:10]
+
+        users_to_create.append({
+            "username": f"{clean}{agent_id}",
+            "password": f"agent{agent_id}",
+            "role": "agent",
+            "agent_code": str(agent_id),
+            "full_name": name,
+        })
+
+    if not users_to_create:
+        logger.info("No new parties or agents to create accounts for")
+        return
+
+    logger.info(f"Creating accounts for {len(new_parties)} new parties and {len(new_agents)} new agents...")
+
     response = requests.post(
         f"{API_URL}/admin/users/bulk",
         json={"users": users_to_create},
@@ -300,18 +371,69 @@ def auto_create_users(token, parties):
     )
     if response.status_code == 200:
         result = response.json()
-        logger.info(f"Created {result.get('created', 0)} new accounts")
+        logger.info(f"Created {result.get('created', 0)} new accounts (skipped {result.get('skipped', 0)})")
     else:
         logger.error(f"Bulk create failed: {response.text[:200]}")
-    
-    return
+
+
+def export_credentials(token, parties, agents):
+    """
+    Fetch ALL current users and write credentials.csv (regenerated every sync).
+    Passwords follow the known pattern so we can reconstruct them.
+    """
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    response = requests.get(f"{API_URL}/admin/users", headers=headers, timeout=30)
+    if response.status_code != 200:
+        logger.error("Could not fetch users for credential export")
+        return
+
+    users = response.json()
+
+    # Build lookup maps
+    party_map = {str(p["lgr_id"]): p for p in parties}
+    agent_map = {str(a["agent_id"]): a for a in agents}
+
+    csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "credentials.csv")
+
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Role", "Username", "Password", "Full Name", "Code", "Mobile", "Email"])
+
+        for user in users:
+            role = user.get("role", "")
+            username = user.get("username", "")
+            full_name = user.get("full_name", "")
+
+            if role == "admin":
+                continue
+            elif role == "party":
+                code = user.get("party_code", "")
+                password = f"party{code}"
+                info = party_map.get(code, {})
+                mobile = info.get("mobile", "")
+                email = info.get("email", "") or user.get("email", "")
+            elif role == "agent":
+                code = user.get("agent_code", "")
+                password = f"agent{code}"
+                info = agent_map.get(code, {})
+                mobile = info.get("mobile", "")
+                email = info.get("email", "") or user.get("email", "")
+            else:
+                continue
+
+            writer.writerow([role, username, password, full_name, code, mobile, email])
+
+    user_count = sum(1 for u in users if u.get("role") != "admin")
+    logger.info(f"Credential list exported: {csv_path} ({user_count} users)")
 
 
 def run_sync():
-    logger.info("=" * 50)
-    logger.info("Starting sync...")
+    logger.info("=" * 60)
+    logger.info("Starting Baalar sync...")
     start_time = time.time()
     try:
+        # Step 1: Connect and fetch from ERP
         logger.info("Connecting to SQL Server...")
         conn = get_db_connection()
 
@@ -319,28 +441,41 @@ def run_sync():
         order_items = fetch_order_items(conn)
         invoices = fetch_invoices(conn)
         parties = fetch_parties(conn)
+        agents = fetch_agents(conn)
         conn.close()
+        logger.info("SQL Server connection closed")
 
+        # Step 2: Authenticate with cloud API
         logger.info("Authenticating with cloud API...")
         token = get_admin_token()
 
-        logger.info("Pushing data to cloud...")
-        # Items are keyed by ConfNo (links orders to invoices)
+        # Step 3: Filter and prepare data
         items_str_keys = {str(k): v for k, v in order_items.items()}
-        
-        # Pre-calculate total_amount per order using ConfNo
-        # Skip orders with 0 amount (no invoice items)
+
+        # Calculate total_amount per order from invoice items
+        # Skip orders with ₹0 total (no invoice = not dispatched yet)
         orders_with_amount = []
+        orders_skipped = 0
         for order in orders:
             conf = order["conf_no"]
+            if not conf:
+                orders_skipped += 1
+                continue
             items_for_order = order_items.get(conf, [])
             total = sum(item["amount"] for item in items_for_order)
             if total > 0:
                 order["total_amount"] = total
                 orders_with_amount.append(order)
-        
-        logger.info(f"Filtered to {len(orders_with_amount)} orders with invoiced items (skipped {len(orders) - len(orders_with_amount)} with ₹0)")
-        
+            else:
+                orders_skipped += 1
+
+        logger.info(
+            f"Prepared {len(orders_with_amount)} orders with invoiced items "
+            f"(skipped {orders_skipped} with ₹0 or no ConfNo)"
+        )
+
+        # Step 4: Push order data to cloud
+        logger.info("Pushing data to cloud...")
         sync_data = {
             "orders": orders_with_amount,
             "order_items": items_str_keys,
@@ -350,19 +485,25 @@ def run_sync():
             "total_records": len(orders_with_amount) + len(invoices) + len(parties),
         }
         result = push_to_cloud(token, sync_data)
+        logger.info(f"Cloud sync result: {result}")
 
-        # Auto-create user accounts for any new parties
-        logger.info("Checking for new party accounts...")
-        auto_create_users(token, parties)
+        # Step 5: Auto-create user accounts for new parties & agents
+        logger.info("Checking for new user accounts...")
+        auto_create_users(token, parties, agents)
+
+        # Step 6: Export updated credential list
+        logger.info("Exporting credential list...")
+        export_credentials(token, parties, agents)
 
         elapsed = time.time() - start_time
-        logger.info(f"Sync completed in {elapsed:.1f}s - {result}")
+        logger.info(f"Sync completed successfully in {elapsed:.1f}s")
+
     except pyodbc.Error as e:
         logger.error(f"SQL Server error: {e}")
     except requests.exceptions.RequestException as e:
         logger.error(f"API error: {e}")
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(f"Unexpected error: {e}", exc_info=True)
 
 
 if __name__ == "__main__":

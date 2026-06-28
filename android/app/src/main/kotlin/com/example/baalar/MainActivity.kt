@@ -1,4 +1,4 @@
-package com.example.balar
+package com.example.baalar
 
 import io.flutter.embedding.android.FlutterActivity
 

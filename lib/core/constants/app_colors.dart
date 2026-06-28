@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 class AppColors {
   AppColors._();
 
-  // Primary - Dark Green from logo
-  static const Color primary = Color(0xFF104C24);
-  static const Color primaryDark = Color(0xFF0C411E);
-  static const Color primaryLight = Color(0xFF1B6B35);
+  // Primary - Red
+  static const Color primary = Color(0xFFD40100);
+  static const Color primaryDark = Color(0xFFB00100);
+  static const Color primaryLight = Color(0xFFE83333);
 
   // Accent - Gold from logo
   static const Color accent = Color(0xFFC8A254);
