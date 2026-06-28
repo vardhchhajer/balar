@@ -98,7 +98,7 @@ def fetch_orders(conn):
     orders = []
     for row in cursor.fetchall():
         # Map FLAG to readable status
-        flag = (row[9] or "").strip()
+        flag = str(row[9] or "").strip()
         flag_map = {
             "S": "Dispatched",
             "D": "Delivered",
@@ -110,7 +110,7 @@ def fetch_orders(conn):
         dispatch_status = flag_map.get(flag.upper(), flag if len(flag) > 1 else "Pending")
 
         # Use ConfNo as order number if Sales_OrderNo is empty or just "."
-        raw_order_no = (row[1] or "").strip()
+        raw_order_no = str(row[1] or "").strip()
         conf_no = row[2]
         if not raw_order_no or raw_order_no in ("", "."):
             order_no = f"ORD-{conf_no}" if conf_no else f"ORD-{row[0]}"
@@ -121,14 +121,14 @@ def fetch_orders(conn):
             "erp_order_id": row[0],
             "order_no": order_no,
             "conf_no": conf_no,
-            "party_name": (row[3] or "").strip(),
-            "party_code": (row[4] or "").strip(),
+            "party_name": str(row[3] or "").strip(),
+            "party_code": str(row[4] or "").strip(),
             "agent_id": row[5],
             "order_date": date_to_str(row[6]),
             "dispatch_date": date_to_str(row[7]),
             "is_stopped": bool(row[8]) if row[8] else False,
             "flag": dispatch_status,
-            "narration": (row[10] or "").strip(),
+            "narration": str(row[10] or "").strip(),
             "total_qty": float(row[11]) if row[11] else 0,
             "total_bales": row[12] or 0,
         })
@@ -173,7 +173,7 @@ def fetch_order_items(conn):
             amount = (qty or pcs) * rate
         
         items[conf_no].append({
-            "product_name": (row[1] or "Unknown Item").strip(),
+            "product_name": str(row[1] or "Unknown Item").strip(),
             "pieces": pcs,
             "quantity": qty or pcs or 1,
             "rate": rate,
@@ -211,18 +211,18 @@ def fetch_invoices(conn):
     for row in cursor.fetchall():
         invoices.append({
             "erp_invoice_id": row[0],
-            "bill_no": (row[1] or "").strip(),
+            "bill_no": str(row[1] or "").strip(),
             "invoice_date": date_to_str(row[2]),
             "conf_no": row[3],
-            "order_no": (row[4] or "").strip(),
-            "lr_no": (row[5] or "").strip(),
+            "order_no": str(row[4] or "").strip(),
+            "lr_no": str(row[5] or "").strip(),
             "lr_date": date_to_str(row[6]),
             "net_total": float(row[7]) if row[7] else 0,
             "pcs_total": row[8] or 0,
             "bales_total": row[9] or 0,
-            "flag": (row[10] or "").strip(),
-            "party_name": (row[11] or "").strip(),
-            "party_code": (row[12] or "").strip(),
+            "flag": str(row[10] or "").strip(),
+            "party_name": str(row[11] or "").strip(),
+            "party_code": str(row[12] or "").strip(),
         })
     logger.info(f"Fetched {len(invoices)} invoices")
     return invoices
@@ -249,10 +249,10 @@ def fetch_parties(conn):
     for row in cursor.fetchall():
         parties.append({
             "lgr_id": row[0],
-            "name": (row[1] or "").strip(),
-            "mobile": (row[2] or "").strip(),
-            "email": (row[3] or "").strip(),
-            "address": (row[4] or "").strip(),
+            "name": str(row[1] or "").strip(),
+            "mobile": str(row[2] or "").strip(),
+            "email": str(row[3] or "").strip(),
+            "address": str(row[4] or "").strip(),
             "agent_id": row[5],
         })
     logger.info(f"Fetched {len(parties)} parties")
@@ -284,9 +284,9 @@ def fetch_agents(conn):
             continue
         agents.append({
             "agent_id": agent_id,
-            "name": (row[1] or f"Agent {agent_id}").strip(),
-            "mobile": (row[2] or "").strip(),
-            "email": (row[3] or "").strip(),
+            "name": str(row[1] or f"Agent {agent_id}").strip(),
+            "mobile": str(row[2] or "").strip(),
+            "email": str(row[3] or "").strip(),
         })
     logger.info(f"Fetched {len(agents)} agents")
     return agents
