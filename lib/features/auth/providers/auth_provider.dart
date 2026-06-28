@@ -34,10 +34,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> checkAuthStatus() async {
-    final token = await _secureStorage.getAccessToken();
-    if (token != null) {
-      state = const AuthState(status: AuthStatus.authenticated);
-    } else {
+    try {
+      final token = await _secureStorage.getAccessToken();
+      if (token != null && token.isNotEmpty) {
+        state = const AuthState(status: AuthStatus.authenticated);
+      } else {
+        state = const AuthState(status: AuthStatus.unauthenticated);
+      }
+    } catch (e) {
       state = const AuthState(status: AuthStatus.unauthenticated);
     }
   }
@@ -46,19 +50,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = const AuthState(status: AuthStatus.loading);
     try {
       await _authRepository.login(username, password);
-
-      // Fetch profile to get user info for storage
-      await _secureStorage.saveUserInfo(
-        partyCode: '',
-        fullName: '',
-      );
-
       state = const AuthState(status: AuthStatus.authenticated);
     } on DioException catch (e) {
-      final error = e.error;
       String message;
+      final error = e.error;
       if (error is AppException) {
         message = error.message;
+      } else if (e.response?.data is Map && e.response?.data['detail'] != null) {
+        message = e.response!.data['detail'].toString();
       } else {
         message = 'Something went wrong. Please try again.';
       }
@@ -72,7 +71,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
-    await _authRepository.logout();
+    try {
+      await _authRepository.logout();
+    } catch (_) {}
     state = const AuthState(status: AuthStatus.unauthenticated);
   }
 }

@@ -5,7 +5,6 @@ import 'package:shimmer/shimmer.dart';
 import 'package:balar/core/constants/app_colors.dart';
 import 'package:balar/core/constants/app_strings.dart';
 import 'package:balar/core/constants/app_text_styles.dart';
-import 'package:balar/core/storage/secure_storage.dart';
 import 'package:balar/features/auth/providers/auth_provider.dart';
 import 'package:balar/features/orders/providers/order_provider.dart';
 import 'package:balar/features/orders/presentation/widgets/order_card.dart';
@@ -21,26 +20,18 @@ class OrdersScreen extends ConsumerStatefulWidget {
 }
 
 class _OrdersScreenState extends ConsumerState<OrdersScreen> {
-  String _partyName = '';
+  bool _hasLoaded = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(ordersProvider.notifier).fetchOrders();
-      _loadPartyName();
+      if (!mounted) return;
+      if (!_hasLoaded) {
+        _hasLoaded = true;
+        ref.read(ordersProvider.notifier).fetchOrders();
+      }
     });
-  }
-
-  Future<void> _loadPartyName() async {
-    final storage = ref.read(secureStorageProvider);
-    final name = await storage.getFullName();
-    final partyCode = await storage.getPartyCode();
-    if (mounted) {
-      setState(() {
-        _partyName = name ?? partyCode ?? '';
-      });
-    }
   }
 
   @override
@@ -50,19 +41,13 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(AppStrings.ordersTitle, style: AppTextStyles.heading3.copyWith(color: Colors.white)),
-            if (_partyName.isNotEmpty)
-              Text(_partyName, style: AppTextStyles.bodySmall.copyWith(color: Colors.white70)),
-          ],
-        ),
+        title: Text(AppStrings.ordersTitle, style: AppTextStyles.heading3.copyWith(color: Colors.white)),
         backgroundColor: AppColors.primary,
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.person_outline, color: Colors.white),
             onSelected: (value) {
+              if (!mounted) return;
               if (value == 'profile') {
                 context.push('/profile');
               } else if (value == 'logout') {
@@ -102,7 +87,11 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
               loading: () => _buildShimmerList(),
               error: (error, _) => AppErrorWidget(
                 message: AppStrings.couldNotLoadOrders,
-                onRetry: () => ref.read(ordersProvider.notifier).fetchOrders(),
+                onRetry: () {
+                  if (mounted) {
+                    ref.read(ordersProvider.notifier).fetchOrders();
+                  }
+                },
               ),
               data: (orders) {
                 if (orders.isEmpty) {

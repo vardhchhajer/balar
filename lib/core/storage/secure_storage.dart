@@ -1,55 +1,51 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/foundation.dart';
 
+// Simple storage using a Map for web (flutter_secure_storage has bugs on web)
+// For mobile builds, swap this back to flutter_secure_storage
 class SecureStorage {
-  static const _accessTokenKey = 'access_token';
-  static const _refreshTokenKey = 'refresh_token';
-  static const _partyCodeKey = 'party_code';
-  static const _fullNameKey = 'full_name';
+  static const _accessTokenKey = 'balar_access_token';
+  static const _refreshTokenKey = 'balar_refresh_token';
+  static const _partyCodeKey = 'balar_party_code';
+  static const _fullNameKey = 'balar_full_name';
 
-  final FlutterSecureStorage _storage;
+  // In-memory store that persists for the session
+  static final Map<String, String> _store = {};
 
-  SecureStorage({FlutterSecureStorage? storage})
-      : _storage = storage ?? const FlutterSecureStorage();
-
-  // Access Token
   Future<void> saveAccessToken(String token) async {
-    await _storage.write(key: _accessTokenKey, value: token);
+    _store[_accessTokenKey] = token;
   }
 
   Future<String?> getAccessToken() async {
-    return await _storage.read(key: _accessTokenKey);
+    return _store[_accessTokenKey];
   }
 
-  // Refresh Token
   Future<void> saveRefreshToken(String token) async {
-    await _storage.write(key: _refreshTokenKey, value: token);
+    _store[_refreshTokenKey] = token;
   }
 
   Future<String?> getRefreshToken() async {
-    return await _storage.read(key: _refreshTokenKey);
+    return _store[_refreshTokenKey];
   }
 
-  // User Info
   Future<void> saveUserInfo({
     required String partyCode,
     required String fullName,
   }) async {
-    await _storage.write(key: _partyCodeKey, value: partyCode);
-    await _storage.write(key: _fullNameKey, value: fullName);
+    _store[_partyCodeKey] = partyCode;
+    _store[_fullNameKey] = fullName;
   }
 
   Future<String?> getPartyCode() async {
-    return await _storage.read(key: _partyCodeKey);
+    return _store[_partyCodeKey];
   }
 
   Future<String?> getFullName() async {
-    return await _storage.read(key: _fullNameKey);
+    return _store[_fullNameKey];
   }
 
-  // Clear All
   Future<void> clearAll() async {
-    await _storage.deleteAll();
+    _store.clear();
   }
 }
 

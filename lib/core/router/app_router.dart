@@ -13,8 +13,14 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/login',
     redirect: (context, state) {
+      // Don't redirect while still checking auth status
+      if (authState.status == AuthStatus.initial) {
+        return null;
+      }
+
       final isAuthenticated = authState.status == AuthStatus.authenticated;
-      final isLoggingIn = state.matchedLocation == '/login';
+      final location = state.matchedLocation;
+      final isLoggingIn = location == '/login';
 
       if (!isAuthenticated && !isLoggingIn) {
         return '/login';
@@ -38,7 +44,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/orders/:id',
         builder: (context, state) {
-          final id = int.parse(state.pathParameters['id']!);
+          final idStr = state.pathParameters['id'] ?? '0';
+          final id = int.tryParse(idStr) ?? 0;
           return OrderDetailScreen(orderId: id);
         },
       ),

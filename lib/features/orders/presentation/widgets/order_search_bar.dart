@@ -35,8 +35,10 @@ class _OrderSearchBarState extends ConsumerState<OrderSearchBar> {
                   icon: const Icon(Icons.clear),
                   onPressed: () {
                     _controller.clear();
-                    ref.read(ordersProvider.notifier).searchOrders('');
-                    setState(() {});
+                    if (mounted) {
+                      ref.read(ordersProvider.notifier).searchOrders('');
+                      setState(() {});
+                    }
                   },
                 )
               : null,
@@ -53,8 +55,10 @@ class _OrderSearchBarState extends ConsumerState<OrderSearchBar> {
           counterText: '',
         ),
         onChanged: (value) {
-          ref.read(ordersProvider.notifier).searchOrders(value);
-          setState(() {});
+          if (mounted) {
+            ref.read(ordersProvider.notifier).searchOrders(value);
+            setState(() {});
+          }
         },
       ),
     );

@@ -82,9 +82,28 @@ def fetch_orders(conn):
     """)
     orders = []
     for row in cursor.fetchall():
+        # Map FLAG to readable status
+        flag = row[9] or ""
+        flag_map = {
+            "S": "Dispatched",
+            "D": "Delivered",
+            "P": "Pending",
+            "C": "Cancelled",
+            "R": "Processing",
+            "O": "Pending",
+        }
+        dispatch_status = flag_map.get(flag.upper(), flag if len(flag) > 1 else "Pending")
+
+        # Use ConfNo as order number if Sales_OrderNo is empty or just "."
+        raw_order_no = row[1]
+        if not raw_order_no or raw_order_no.strip() in ("", "."):
+            order_no = f"ORD-{row[2]}"
+        else:
+            order_no = raw_order_no
+
         orders.append({
             "erp_order_id": row[0],
-            "order_no": row[1] or f"CONF-{row[2]}",
+            "order_no": order_no,
             "conf_no": row[2],
             "party_name": row[3],
             "party_code": row[4],
@@ -92,7 +111,7 @@ def fetch_orders(conn):
             "order_date": date_to_str(row[6]),
             "vch_date": date_to_str(row[7]),
             "is_stopped": bool(row[8]) if row[8] else False,
-            "flag": row[9],
+            "flag": dispatch_status,
             "narration": row[10],
             "total_qty": float(row[11]) if row[11] else 0,
             "total_bales": row[12] or 0,

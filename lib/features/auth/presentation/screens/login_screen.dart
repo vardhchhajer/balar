@@ -17,10 +17,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     ref.listen<AuthState>(authProvider, (previous, next) {
       if (!mounted) return;
-      if (next.errorMessage != null && next.errorMessage!.isNotEmpty) {
+      final msg = next.errorMessage;
+      if (msg != null && msg.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(next.errorMessage!),
+            content: Text(msg),
             backgroundColor: AppColors.error,
             duration: const Duration(seconds: 4),
           ),
