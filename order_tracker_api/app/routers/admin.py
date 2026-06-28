@@ -193,17 +193,18 @@ async def receive_sync_data(
             if not erp_id:
                 continue
 
-            # Calculate total amount from items
+            # Calculate total amount from items (or use pre-calculated from sync agent)
             items_for_order = order_items_data.get(str(erp_id), [])
-            total_amount = 0.0
-            for item in items_for_order:
-                amount = float(item.get("amount", 0))
-                if amount:
-                    total_amount += amount
-                else:
-                    rate = float(item.get("rate", 0))
-                    qty = float(item.get("quantity", 0) or item.get("pieces", 0) or 0)
-                    total_amount += rate * qty
+            total_amount = float(order_data.get("total_amount", 0))
+            if not total_amount:
+                for item in items_for_order:
+                    amount = float(item.get("amount", 0))
+                    if amount:
+                        total_amount += amount
+                    else:
+                        rate = float(item.get("rate", 0))
+                        qty = float(item.get("quantity", 0) or item.get("pieces", 0) or 0)
+                        total_amount += rate * qty
 
             # Check if order already exists
             result = await db.execute(

@@ -146,13 +146,14 @@ def fetch_order_items(conn):
         if order_id not in items:
             items[order_id] = []
         
+        bales = int(row[2]) if row[2] else 0
         pieces = int(row[3]) if row[3] else 0
         quantity = float(row[9]) if row[9] else 0
         meter = float(row[4]) if row[4] else 0
         rate = float(row[5]) if row[5] else 0
         
-        # Use quantity if available, else pieces, else meter
-        actual_qty = quantity or pieces or meter or 0
+        # Priority: Bales first (textile), then quantity, pieces, meter
+        actual_qty = bales or quantity or pieces or meter or 1
         amount = actual_qty * rate
         
         items[order_id].append({
@@ -276,6 +277,13 @@ def run_sync():
         logger.info("Pushing data to cloud...")
         # Convert order_items keys to strings for JSON
         items_str_keys = {str(k): v for k, v in order_items.items()}
+        
+        # Pre-calculate total_amount per order
+        for order in orders:
+            eid = order["erp_order_id"]
+            items_for_order = order_items.get(eid, [])
+            order["total_amount"] = sum(item["amount"] for item in items_for_order)
+        
         sync_data = {
             "orders": orders,
             "order_items": items_str_keys,
