@@ -14,11 +14,11 @@ class OrderItemModel {
   });
 
   factory OrderItemModel.fromJson(Map<String, dynamic> json) => OrderItemModel(
-        id: json['id'] as int,
-        productName: json['product_name'] as String,
-        quantity: json['quantity'] as int,
-        unitPrice: (json['unit_price'] as num).toDouble(),
-        amount: (json['amount'] as num).toDouble(),
+        id: json['id'] as int? ?? 0,
+        productName: json['product_name'] as String? ?? 'Unknown',
+        quantity: json['quantity'] as int? ?? 0,
+        unitPrice: (json['unit_price'] as num?)?.toDouble() ?? 0.0,
+        amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
       );
 }
 
@@ -48,10 +48,10 @@ class OrderModel {
   });
 
   factory OrderModel.fromJson(Map<String, dynamic> json) => OrderModel(
-        id: json['id'] as int,
-        orderNo: json['order_no'] as String,
-        orderDate: json['order_date'] as String,
-        dispatchStatus: json['dispatch_status'] as String,
+        id: json['id'] as int? ?? 0,
+        orderNo: json['order_no'] as String? ?? '',
+        orderDate: json['order_date'] as String? ?? '',
+        dispatchStatus: json['dispatch_status'] as String? ?? 'Pending',
         dispatchDate: json['dispatch_date'] as String?,
         invoiceNo: json['invoice_no'] as String?,
         trackingNo: json['tracking_no'] as String?,
@@ -83,12 +83,12 @@ class OrderListResponse {
   const OrderListResponse({required this.orders, required this.total});
 
   factory OrderListResponse.fromJson(Map<String, dynamic> json) {
-    final ordersList = (json['orders'] as List)
-        .map((e) => OrderModel.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final ordersList = (json['orders'] as List?)
+        ?.map((e) => OrderModel.fromJson(e as Map<String, dynamic>))
+        .toList() ?? [];
     return OrderListResponse(
       orders: ordersList,
-      total: json['total'] as int,
+      total: json['total'] as int? ?? 0,
     );
   }
 }

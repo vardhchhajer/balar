@@ -113,7 +113,8 @@ def fetch_order_items(conn):
             sod.Rate,
             sod.PendingBales,
             sod.DeliveredBales,
-            sod.Remark
+            sod.Remark,
+            sod.Quantity
         FROM SALES_ORDER_DETAIL sod
         LEFT JOIN ITEM_MASTER im ON sod.Item_Id = im.Item_Id
         WHERE sod.Sal_Order_Id IN (
@@ -125,12 +126,22 @@ def fetch_order_items(conn):
         order_id = row[0]
         if order_id not in items:
             items[order_id] = []
+        
+        pieces = int(row[3]) if row[3] else 0
+        quantity = float(row[9]) if row[9] else 0
+        meter = float(row[4]) if row[4] else 0
+        rate = float(row[5]) if row[5] else 0
+        
+        # Use quantity if available, else pieces, else meter
+        actual_qty = quantity or pieces or meter or 0
+        amount = actual_qty * rate
+        
         items[order_id].append({
             "product_name": row[1] or "Unknown Item",
-            "bales": row[2] or 0,
-            "pieces": row[3] or 0,
-            "meter": float(row[4]) if row[4] else 0,
-            "rate": float(row[5]) if row[5] else 0,
+            "pieces": pieces,
+            "quantity": actual_qty,
+            "rate": rate,
+            "amount": amount,
             "pending_bales": row[6] or 0,
             "delivered_bales": row[7] or 0,
             "remark": row[8],

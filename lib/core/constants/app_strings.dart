@@ -2,7 +2,7 @@ class AppStrings {
   AppStrings._();
 
   static const String appName = 'Balar';
-  static const String baseUrl = 'http://35.200.191.241:8080';
+  static const String baseUrl = 'http://35.200.191.241';
 
   // Login
   static const String loginTitle = 'Balar';

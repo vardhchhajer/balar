@@ -10,13 +10,13 @@ import 'package:balar/shared/widgets/error_widget.dart';
 
 final profileProvider = FutureProvider<ProfileModel>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
-  final response = await apiClient.get('/profile');
+  final response = await apiClient.get('/profile/');
   return ProfileModel.fromJson(response.data);
 });
 
 final syncInfoProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
-  final response = await apiClient.get('/profile/sync-info');
+  final response = await apiClient.get('/profile/sync-info/');
   return response.data as Map<String, dynamic>;
 });
 

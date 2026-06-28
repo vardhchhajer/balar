@@ -17,12 +17,12 @@ class OrderRepository {
     if (sortBy != null) queryParams['sort_by'] = sortBy;
     if (sortOrder != null) queryParams['sort_order'] = sortOrder;
 
-    final response = await _apiClient.get('/orders', queryParams: queryParams);
+    final response = await _apiClient.get('/orders/', queryParams: queryParams);
     return OrderListResponse.fromJson(response.data);
   }
 
   Future<OrderModel> getOrderById(int id) async {
-    final response = await _apiClient.get('/orders/$id');
+    final response = await _apiClient.get('/orders/$id/');
     return OrderModel.fromJson(response.data);
   }
 }

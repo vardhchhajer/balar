@@ -5,12 +5,18 @@ import 'package:balar/features/auth/presentation/widgets/logo_header.dart';
 import 'package:balar/features/auth/presentation/widgets/login_form.dart';
 import 'package:balar/features/auth/providers/auth_provider.dart';
 
-class LoginScreen extends ConsumerWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends ConsumerState<LoginScreen> {
+  @override
+  Widget build(BuildContext context) {
     ref.listen<AuthState>(authProvider, (previous, next) {
+      if (!mounted) return;
       if (next.errorMessage != null && next.errorMessage!.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

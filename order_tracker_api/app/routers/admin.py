@@ -197,9 +197,13 @@ async def receive_sync_data(
             items_for_order = order_items_data.get(str(erp_id), [])
             total_amount = 0.0
             for item in items_for_order:
-                rate = float(item.get("rate", 0))
-                qty = float(item.get("bales", 0) or item.get("pieces", 0) or item.get("meter", 0) or 0)
-                total_amount += rate * qty
+                amount = float(item.get("amount", 0))
+                if amount:
+                    total_amount += amount
+                else:
+                    rate = float(item.get("rate", 0))
+                    qty = float(item.get("quantity", 0) or item.get("pieces", 0) or 0)
+                    total_amount += rate * qty
 
             # Check if order already exists
             result = await db.execute(
@@ -243,13 +247,14 @@ async def receive_sync_data(
             # Insert items
             for item_data in items_for_order:
                 rate = float(item_data.get("rate", 0))
-                qty = float(item_data.get("bales", 0) or item_data.get("pieces", 0) or item_data.get("meter", 0) or 1)
+                qty = float(item_data.get("quantity", 0) or item_data.get("pieces", 0) or 1)
+                amount = float(item_data.get("amount", 0)) or (qty * rate)
                 item = OrderItem(
                     order_id=order_id,
                     product_name=item_data.get("product_name", "Unknown"),
                     quantity=int(qty) if qty else 1,
                     unit_price=rate,
-                    amount=rate * qty,
+                    amount=amount,
                 )
                 db.add(item)
                 items_created += 1
