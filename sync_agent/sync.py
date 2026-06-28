@@ -31,14 +31,19 @@ logger = logging.getLogger(__name__)
 
 
 def get_db_connection():
+    """Connect to SQL Server in READ-ONLY mode. Cannot modify/delete/create any data."""
     conn_str = (
         f"DRIVER={{SQL Server}};"
         f"SERVER={SQL_SERVER};"
         f"DATABASE={SQL_DATABASE};"
         f"UID={SQL_USER};"
         f"PWD={SQL_PASSWORD};"
+        f"ApplicationIntent=ReadOnly;"
     )
-    return pyodbc.connect(conn_str)
+    conn = pyodbc.connect(conn_str, readonly=True)
+    # Belt-and-suspenders: explicitly set read-only at connection level
+    conn.execute("SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED")
+    return conn
 
 
 def get_admin_token():
@@ -173,7 +178,7 @@ def fetch_order_items(conn):
             "quantity": qty or pcs or 1,
             "rate": rate,
             "amount": amount,
-            "bill_no": (row[6] or "").strip(),
+            "bill_no": str(row[6] or "").strip(),
         })
     logger.info(f"Fetched invoice items for {len(items)} orders (ConfNos)")
     return items
