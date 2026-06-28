@@ -357,8 +357,11 @@ def auto_create_users(token, parties, agents):
     for party in new_parties:
         lgr_id = party["lgr_id"]
         name = party["name"] or f"Party {lgr_id}"
-        clean = name.strip().split()[0].lower() if name.strip() else "user"
-        clean = ''.join(c for c in clean if c.isalnum())[:10]
+        # Take first word, keep only ASCII alphanumeric, lowercase
+        first_word = name.strip().split()[0].lower() if name.strip() else ""
+        clean = ''.join(c for c in first_word if c.isascii() and c.isalnum())[:10]
+        if not clean:
+            clean = "party"
 
         users_to_create.append({
             "username": f"{clean}{lgr_id}",
@@ -373,8 +376,10 @@ def auto_create_users(token, parties, agents):
     for agent in new_agents:
         agent_id = agent["agent_id"]
         name = agent["name"] or f"Agent {agent_id}"
-        clean = name.strip().split()[0].lower() if name.strip() else "agent"
-        clean = ''.join(c for c in clean if c.isalnum())[:10]
+        first_word = name.strip().split()[0].lower() if name.strip() else ""
+        clean = ''.join(c for c in first_word if c.isascii() and c.isalnum())[:10]
+        if not clean:
+            clean = "agent"
 
         users_to_create.append({
             "username": f"{clean}{agent_id}",
