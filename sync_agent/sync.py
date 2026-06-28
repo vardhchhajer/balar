@@ -329,18 +329,25 @@ def run_sync():
         items_str_keys = {str(k): v for k, v in order_items.items()}
         
         # Pre-calculate total_amount per order using ConfNo
+        # Skip orders with 0 amount (no invoice items)
+        orders_with_amount = []
         for order in orders:
             conf = order["conf_no"]
             items_for_order = order_items.get(conf, [])
-            order["total_amount"] = sum(item["amount"] for item in items_for_order)
+            total = sum(item["amount"] for item in items_for_order)
+            if total > 0:
+                order["total_amount"] = total
+                orders_with_amount.append(order)
+        
+        logger.info(f"Filtered to {len(orders_with_amount)} orders with invoiced items (skipped {len(orders) - len(orders_with_amount)} with ₹0)")
         
         sync_data = {
-            "orders": orders,
+            "orders": orders_with_amount,
             "order_items": items_str_keys,
             "invoices": invoices,
             "parties": parties,
             "synced_at": datetime.now().isoformat(),
-            "total_records": len(orders) + len(invoices) + len(parties),
+            "total_records": len(orders_with_amount) + len(invoices) + len(parties),
         }
         result = push_to_cloud(token, sync_data)
 

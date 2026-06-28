@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
-import 'package:balar/core/storage/secure_storage.dart';
+import 'package:baalar/core/storage/secure_storage.dart';
 
 class AuthInterceptor extends Interceptor {
   final SecureStorage secureStorage;

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:balar/core/constants/app_colors.dart';
-import 'package:balar/core/constants/app_strings.dart';
-import 'package:balar/core/constants/app_text_styles.dart';
-import 'package:balar/core/utils/validators.dart';
-import 'package:balar/features/auth/providers/auth_provider.dart';
+import 'package:baalar/core/constants/app_colors.dart';
+import 'package:baalar/core/constants/app_strings.dart';
+import 'package:baalar/core/constants/app_text_styles.dart';
+import 'package:baalar/core/utils/validators.dart';
+import 'package:baalar/features/auth/providers/auth_provider.dart';
 
 class LoginForm extends ConsumerStatefulWidget {
   const LoginForm({super.key});

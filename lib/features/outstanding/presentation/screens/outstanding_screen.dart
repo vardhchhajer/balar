@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:balar/core/constants/app_colors.dart';
-import 'package:balar/core/constants/app_strings.dart';
-import 'package:balar/core/constants/app_text_styles.dart';
-import 'package:balar/core/utils/date_formatter.dart';
-import 'package:balar/features/outstanding/data/models/outstanding_model.dart';
-import 'package:balar/features/outstanding/providers/outstanding_provider.dart';
-import 'package:balar/shared/widgets/error_widget.dart';
+import 'package:baalar/core/constants/app_colors.dart';
+import 'package:baalar/core/constants/app_text_styles.dart';
+import 'package:baalar/core/utils/date_formatter.dart';
+import 'package:baalar/features/outstanding/data/models/outstanding_model.dart';
+import 'package:baalar/features/outstanding/providers/outstanding_provider.dart';
+import 'package:baalar/shared/widgets/error_widget.dart';
 
 class OutstandingScreen extends ConsumerWidget {
   const OutstandingScreen({super.key});

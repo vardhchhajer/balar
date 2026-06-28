@@ -2,15 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shimmer/shimmer.dart';
-import 'package:balar/core/constants/app_colors.dart';
-import 'package:balar/core/constants/app_strings.dart';
-import 'package:balar/core/constants/app_text_styles.dart';
-import 'package:balar/features/auth/providers/auth_provider.dart';
-import 'package:balar/features/orders/providers/order_provider.dart';
-import 'package:balar/features/orders/presentation/widgets/order_card.dart';
-import 'package:balar/features/orders/presentation/widgets/order_search_bar.dart';
-import 'package:balar/features/orders/presentation/widgets/empty_orders_state.dart';
-import 'package:balar/shared/widgets/error_widget.dart';
+import 'package:baalar/core/constants/app_colors.dart';
+import 'package:baalar/core/constants/app_strings.dart';
+import 'package:baalar/core/constants/app_text_styles.dart';
+import 'package:baalar/features/auth/providers/auth_provider.dart';
+import 'package:baalar/features/orders/providers/order_provider.dart';
+import 'package:baalar/features/orders/presentation/widgets/order_card.dart';
+import 'package:baalar/features/orders/presentation/widgets/order_search_bar.dart';
+import 'package:baalar/features/orders/presentation/widgets/empty_orders_state.dart';
+import 'package:baalar/shared/widgets/error_widget.dart';
 
 class OrdersScreen extends ConsumerStatefulWidget {
   const OrdersScreen({super.key});
@@ -50,11 +50,23 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
               if (!mounted) return;
               if (value == 'profile') {
                 context.push('/profile');
+              } else if (value == 'outstanding') {
+                context.push('/outstanding');
               } else if (value == 'logout') {
                 ref.read(authProvider.notifier).logout();
               }
             },
             itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'outstanding',
+                child: Row(
+                  children: [
+                    Icon(Icons.account_balance_wallet_outlined, size: 20),
+                    SizedBox(width: 8),
+                    Text('Outstanding'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'profile',
                 child: Row(
@@ -97,28 +109,12 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                 if (orders.isEmpty) {
                   return const EmptyOrdersState();
                 }
-                return Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          '${orders.length} orders found',
-                          style: AppTextStyles.bodySmall,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: RefreshIndicator(
-                        onRefresh: () => ref.read(ordersProvider.notifier).refreshOrders(),
-                        child: ListView.builder(
-                          itemCount: orders.length,
-                          itemBuilder: (context, index) => OrderCard(order: orders[index]),
-                        ),
-                      ),
-                    ),
-                  ],
+                return RefreshIndicator(
+                  onRefresh: () => ref.read(ordersProvider.notifier).refreshOrders(),
+                  child: ListView.builder(
+                    itemCount: orders.length,
+                    itemBuilder: (context, index) => OrderCard(order: orders[index]),
+                  ),
                 );
               },
             ),

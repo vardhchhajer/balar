@@ -1,11 +1,11 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:balar/features/auth/presentation/screens/login_screen.dart';
-import 'package:balar/features/auth/providers/auth_provider.dart';
-import 'package:balar/features/home/presentation/screens/home_shell.dart';
-import 'package:balar/features/orders/presentation/screens/order_detail_screen.dart';
-import 'package:balar/features/profile/presentation/screens/profile_screen.dart';
+import 'package:baalar/features/auth/presentation/screens/login_screen.dart';
+import 'package:baalar/features/auth/providers/auth_provider.dart';
+import 'package:baalar/features/home/presentation/screens/home_shell.dart';
+import 'package:baalar/features/orders/presentation/screens/order_detail_screen.dart';
+import 'package:baalar/features/outstanding/presentation/screens/outstanding_screen.dart';
+import 'package:baalar/features/profile/presentation/screens/profile_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
@@ -52,6 +52,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/profile',
         builder: (context, state) => const ProfileScreen(),
+      ),
+      GoRoute(
+        path: '/outstanding',
+        builder: (context, state) => const OutstandingScreen(),
       ),
     ],
   );

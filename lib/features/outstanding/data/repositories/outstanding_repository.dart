@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:balar/core/network/api_client.dart';
-import 'package:balar/features/outstanding/data/models/outstanding_model.dart';
+import 'package:baalar/core/network/api_client.dart';
+import 'package:baalar/features/outstanding/data/models/outstanding_model.dart';
 
 class OutstandingRepository {
   final ApiClient _apiClient;

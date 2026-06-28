@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:balar/core/constants/app_colors.dart';
-import 'package:balar/core/constants/app_strings.dart';
-import 'package:balar/core/constants/app_text_styles.dart';
-import 'package:balar/core/utils/date_formatter.dart';
-import 'package:balar/features/orders/data/models/order_model.dart';
-import 'package:balar/features/orders/presentation/widgets/dispatch_status_badge.dart';
-import 'package:balar/features/orders/providers/order_provider.dart';
-import 'package:balar/shared/widgets/error_widget.dart';
+import 'package:baalar/core/constants/app_colors.dart';
+import 'package:baalar/core/constants/app_strings.dart';
+import 'package:baalar/core/constants/app_text_styles.dart';
+import 'package:baalar/core/utils/date_formatter.dart';
+import 'package:baalar/features/orders/data/models/order_model.dart';
+import 'package:baalar/features/orders/presentation/widgets/dispatch_status_badge.dart';
+import 'package:baalar/features/orders/providers/order_provider.dart';
+import 'package:baalar/shared/widgets/error_widget.dart';
 
 class OrderDetailScreen extends ConsumerWidget {
   final int orderId;

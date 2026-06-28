@@ -1,9 +1,9 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:balar/core/constants/app_strings.dart';
-import 'package:balar/core/network/interceptors/auth_interceptor.dart';
-import 'package:balar/core/network/interceptors/error_interceptor.dart';
-import 'package:balar/core/storage/secure_storage.dart';
+import 'package:baalar/core/constants/app_strings.dart';
+import 'package:baalar/core/network/interceptors/auth_interceptor.dart';
+import 'package:baalar/core/network/interceptors/error_interceptor.dart';
+import 'package:baalar/core/storage/secure_storage.dart';
 
 class ApiClient {
   final Dio _dio;

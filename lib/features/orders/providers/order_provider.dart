@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:balar/features/orders/data/models/order_model.dart';
-import 'package:balar/features/orders/data/repositories/order_repository.dart';
+import 'package:baalar/features/orders/data/models/order_model.dart';
+import 'package:baalar/features/orders/data/repositories/order_repository.dart';
 
 class OrdersNotifier extends StateNotifier<AsyncValue<List<OrderModel>>> {
   final OrderRepository _repository;

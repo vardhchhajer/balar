@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:balar/core/constants/app_colors.dart';
-import 'package:balar/core/constants/app_strings.dart';
-import 'package:balar/core/router/app_router.dart';
+import 'package:baalar/core/constants/app_colors.dart';
+import 'package:baalar/core/constants/app_strings.dart';
+import 'package:baalar/core/router/app_router.dart';
 
-class OrderTrackerApp extends ConsumerWidget {
-  const OrderTrackerApp({super.key});
+class BaalarApp extends ConsumerWidget {
+  const BaalarApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -20,6 +20,8 @@ class OrderTrackerApp extends ConsumerWidget {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
           seedColor: AppColors.primary,
+          primary: AppColors.primary,
+          secondary: AppColors.accent,
           brightness: Brightness.light,
         ),
         scaffoldBackgroundColor: AppColors.background,
@@ -28,6 +30,16 @@ class OrderTrackerApp extends ConsumerWidget {
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
           elevation: 0,
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+          ),
+        ),
+        floatingActionButtonTheme: const FloatingActionButtonThemeData(
+          backgroundColor: AppColors.accent,
+          foregroundColor: Colors.white,
         ),
       ),
     );

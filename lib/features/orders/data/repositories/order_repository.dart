@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:balar/core/network/api_client.dart';
-import 'package:balar/features/orders/data/models/order_model.dart';
+import 'package:baalar/core/network/api_client.dart';
+import 'package:baalar/features/orders/data/models/order_model.dart';
 
 class OrderRepository {
   final ApiClient _apiClient;
@@ -22,7 +22,7 @@ class OrderRepository {
   }
 
   Future<OrderModel> getOrderById(int id) async {
-    final response = await _apiClient.get('/orders/$id/');
+    final response = await _apiClient.get('/orders/$id');
     return OrderModel.fromJson(response.data);
   }
 }

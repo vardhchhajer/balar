@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:balar/core/constants/app_colors.dart';
-import 'package:balar/core/constants/app_strings.dart';
-import 'package:balar/core/constants/app_text_styles.dart';
-import 'package:balar/core/utils/date_formatter.dart';
-import 'package:balar/features/orders/data/models/order_model.dart';
-import 'package:balar/features/orders/presentation/widgets/dispatch_status_badge.dart';
+import 'package:baalar/core/constants/app_colors.dart';
+import 'package:baalar/core/constants/app_strings.dart';
+import 'package:baalar/core/constants/app_text_styles.dart';
+import 'package:baalar/core/utils/date_formatter.dart';
+import 'package:baalar/features/orders/data/models/order_model.dart';
+import 'package:baalar/features/orders/presentation/widgets/dispatch_status_badge.dart';
 
 class OrderCard extends StatelessWidget {
   final OrderModel order;

@@ -1,5 +1,5 @@
-name: balar
-description: "Order Tracker - B2B Order Tracking App"
+name: baalar
+description: "Baalar"
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -26,3 +26,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/

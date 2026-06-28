@@ -1,5 +1,5 @@
 import 'package:dio/dio.dart';
-import 'package:balar/core/errors/app_exception.dart';
+import 'package:baalar/core/errors/app_exception.dart';
 
 class ErrorInterceptor extends Interceptor {
   @override

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:balar/core/constants/app_colors.dart';
-import 'package:balar/features/auth/presentation/widgets/logo_header.dart';
-import 'package:balar/features/auth/presentation/widgets/login_form.dart';
-import 'package:balar/features/auth/providers/auth_provider.dart';
+import 'package:baalar/core/constants/app_colors.dart';
+import 'package:baalar/features/auth/presentation/widgets/logo_header.dart';
+import 'package:baalar/features/auth/presentation/widgets/login_form.dart';
+import 'package:baalar/features/auth/providers/auth_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});

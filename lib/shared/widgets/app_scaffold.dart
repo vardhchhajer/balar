@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:balar/core/constants/app_colors.dart';
+import 'package:baalar/core/constants/app_colors.dart';
 
 class AppScaffold extends StatelessWidget {
   final PreferredSizeWidget? appBar;

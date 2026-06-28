@@ -10,6 +10,7 @@ from app.routers.auth import router as auth_router
 from app.routers.orders import router as orders_router
 from app.routers.profile import router as profile_router
 from app.routers.admin import router as admin_router
+from app.routers.outstanding import router as outstanding_router
 
 settings = get_settings()
 
@@ -22,9 +23,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Balar API",
+    title="Baalar API",
     version="2.0.0",
-    description="B2B Order Tracking API - Balar",
+    description="Baalar - B2B Order & Outstanding Tracking API",
     lifespan=lifespan,
     docs_url="/docs" if settings.ENVIRONMENT == "development" else None,
     redoc_url=None,
@@ -42,8 +43,9 @@ app.include_router(auth_router)
 app.include_router(orders_router)
 app.include_router(profile_router)
 app.include_router(admin_router)
+app.include_router(outstanding_router)
 
 
 @app.get("/", summary="Health check")
 async def health_check():
-    return {"status": "ok", "app": "Balar API", "version": "2.0.0"}
+    return {"status": "ok", "app": "Baalar API", "version": "2.0.0"}

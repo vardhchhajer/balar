@@ -325,3 +325,57 @@ async def receive_sync_data(
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Sync processing failed: {str(e)[:200]}")
+
+
+@router.post("/sync/outstanding")
+async def receive_outstanding_data(
+    data: dict,
+    admin: AppUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Receive outstanding bills from the on-premise sync agent. Replaces all bills per party."""
+    from datetime import datetime
+    from sqlalchemy import delete
+    from app.models.outstanding import OutstandingBill
+
+    try:
+        bills_data = data.get("bills", [])
+
+        # Group by party_code and delete existing, then re-insert
+        party_codes_seen = set()
+        bills_created = 0
+
+        for bill_data in bills_data:
+            party_code = str(bill_data.get("party_code", ""))
+            if not party_code:
+                continue
+
+            # Delete existing bills for this party (first time we see them)
+            if party_code not in party_codes_seen:
+                await db.execute(
+                    delete(OutstandingBill).where(OutstandingBill.party_code == party_code)
+                )
+                party_codes_seen.add(party_code)
+
+            bill = OutstandingBill(
+                party_code=party_code,
+                bill_no=bill_data.get("bill_no", ""),
+                bill_date=datetime.fromisoformat(bill_data["bill_date"]).date() if bill_data.get("bill_date") else datetime.now().date(),
+                total_amount=float(bill_data.get("total_amount", 0)),
+                amount_paid=float(bill_data.get("amount_paid", 0)),
+                amount_outstanding=float(bill_data.get("amount_outstanding", 0)),
+                due_date=datetime.fromisoformat(bill_data["due_date"]).date() if bill_data.get("due_date") else None,
+                description=bill_data.get("description"),
+            )
+            db.add(bill)
+            bills_created += 1
+
+        return {
+            "message": "Outstanding bills synced",
+            "bills_created": bills_created,
+            "parties_updated": len(party_codes_seen),
+        }
+
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Outstanding sync failed: {str(e)[:200]}")

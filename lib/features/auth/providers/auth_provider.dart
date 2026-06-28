@@ -1,8 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:balar/core/errors/app_exception.dart';
-import 'package:balar/core/storage/secure_storage.dart';
-import 'package:balar/features/auth/data/repositories/auth_repository.dart';
+import 'package:baalar/core/errors/app_exception.dart';
+import 'package:baalar/core/storage/secure_storage.dart';
+import 'package:baalar/features/auth/data/repositories/auth_repository.dart';
 
 enum AuthStatus { initial, authenticated, unauthenticated, loading }
 

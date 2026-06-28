@@ -1,22 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:balar/core/constants/app_colors.dart';
-import 'package:balar/core/constants/app_strings.dart';
-import 'package:balar/core/constants/app_text_styles.dart';
-import 'package:balar/core/network/api_client.dart';
-import 'package:balar/features/auth/providers/auth_provider.dart';
-import 'package:balar/features/profile/data/models/profile_model.dart';
-import 'package:balar/shared/widgets/error_widget.dart';
+import 'package:baalar/core/constants/app_colors.dart';
+import 'package:baalar/core/constants/app_strings.dart';
+import 'package:baalar/core/constants/app_text_styles.dart';
+import 'package:baalar/core/network/api_client.dart';
+import 'package:baalar/features/auth/providers/auth_provider.dart';
+import 'package:baalar/features/profile/data/models/profile_model.dart';
+import 'package:baalar/shared/widgets/error_widget.dart';
 
 final profileProvider = FutureProvider<ProfileModel>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
-  final response = await apiClient.get('/profile/');
+  final response = await apiClient.get('/profile');
   return ProfileModel.fromJson(response.data);
 });
 
 final syncInfoProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
-  final response = await apiClient.get('/profile/sync-info/');
+  final response = await apiClient.get('/profile/sync-info');
   return response.data as Map<String, dynamic>;
 });
 

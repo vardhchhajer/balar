@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:balar/core/network/api_client.dart';
-import 'package:balar/core/storage/secure_storage.dart';
-import 'package:balar/features/auth/data/models/auth_model.dart';
+import 'package:baalar/core/network/api_client.dart';
+import 'package:baalar/core/storage/secure_storage.dart';
+import 'package:baalar/features/auth/data/models/auth_model.dart';
 
 class AuthRepository {
   final ApiClient _apiClient;
@@ -24,6 +24,18 @@ class AuthRepository {
     // Store tokens
     await _secureStorage.saveAccessToken(tokenResponse.accessToken);
     await _secureStorage.saveRefreshToken(tokenResponse.refreshToken);
+
+    // Fetch and store user profile info
+    try {
+      final profileResponse = await _apiClient.get('/profile');
+      final data = profileResponse.data;
+      await _secureStorage.saveUserInfo(
+        partyCode: data['party_code'] ?? '',
+        fullName: data['full_name'] ?? '',
+      );
+    } catch (_) {
+      // Non-critical: profile info is supplementary
+    }
 
     return tokenResponse;
   }

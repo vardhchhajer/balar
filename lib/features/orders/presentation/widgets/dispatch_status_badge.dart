@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:balar/core/constants/app_colors.dart';
-import 'package:balar/core/constants/app_strings.dart';
+import 'package:baalar/core/constants/app_colors.dart';
+import 'package:baalar/core/constants/app_strings.dart';
 
 enum DisplayStatus { notDispatched, dispatched, delivered, cancelled, unavailable }
 

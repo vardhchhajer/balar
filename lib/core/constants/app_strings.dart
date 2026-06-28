@@ -1,12 +1,12 @@
 class AppStrings {
   AppStrings._();
 
-  static const String appName = 'Balar';
+  static const String appName = 'Baalar';
   static const String baseUrl = 'http://35.200.191.241:8080';
 
   // Login
-  static const String loginTitle = 'Balar';
-  static const String loginSubtitle = 'Track your orders in real-time';
+  static const String loginTitle = 'Baalar';
+  static const String loginSubtitle = 'Your business, simplified.';
   static const String usernameHint = 'Username';
   static const String passwordHint = 'Password';
   static const String loginButton = 'Login';
@@ -15,9 +15,9 @@ class AppStrings {
   static const String passwordMinLength = 'Password must be at least 6 characters';
 
   // Orders
-  static const String ordersTitle = 'Balar';
-  static const String searchHint = 'Search by order number';
-  static const String noOrdersFound = 'No orders found';
+  static const String ordersTitle = 'Baalar';
+  static const String searchHint = 'Search orders';
+  static const String noOrdersFound = 'No orders yet';
   static const String pullToRefresh = 'Pull down to refresh';
   static const String orderDate = 'Order Date';
   static const String dispatchDate = 'Dispatch Date';
