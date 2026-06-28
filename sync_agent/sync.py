@@ -121,52 +121,50 @@ def fetch_orders(conn):
 
 
 def fetch_order_items(conn):
+    """Fetch items from SALES_INVOICE_DETAIL (has actual dispatched quantities and amounts)."""
     cursor = conn.cursor()
     cursor.execute("""
         SELECT
-            sod.Sal_Order_Id,
+            si.ConfNo,
             im.Item_Name,
-            sod.Bales,
-            sod.Pieces,
-            sod.Meter,
-            sod.Rate,
-            sod.PendingBales,
-            sod.DeliveredBales,
-            sod.Remark,
-            sod.Quantity
-        FROM SALES_ORDER_DETAIL sod
-        LEFT JOIN ITEM_MASTER im ON sod.Item_Id = im.Item_Id
-        WHERE sod.Sal_Order_Id IN (
-            SELECT Sal_Order_Id FROM SALES_ORDER WHERE Order_Date >= DATEADD(YEAR, -1, GETDATE())
-        )
+            sid.Sal_Inv_Pcs,
+            sid.Sal_Inv_Qty,
+            sid.Sal_Inv_Rate,
+            sid.Sal_Inv_Amount,
+            si.Sal_Inv_Bill_No
+        FROM SALES_INVOICE si
+        JOIN SALES_INVOICE_DETAIL sid ON si.Sal_Inv_Id = sid.Sal_Inv_Id
+        LEFT JOIN ITEM_MASTER im ON sid.Item_Id = im.Item_Id
+        WHERE si.Sal_Inv_Vdate >= DATEADD(YEAR, -1, GETDATE())
+        AND si.ConfNo IS NOT NULL
     """)
+    # Group by ConfNo (which links to SALES_ORDER.ConfNo)
     items = {}
     for row in cursor.fetchall():
-        order_id = row[0]
-        if order_id not in items:
-            items[order_id] = []
+        conf_no = row[0]
+        if not conf_no:
+            continue
+        if conf_no not in items:
+            items[conf_no] = []
         
-        bales = int(row[2]) if row[2] else 0
-        pieces = int(row[3]) if row[3] else 0
-        quantity = float(row[9]) if row[9] else 0
-        meter = float(row[4]) if row[4] else 0
-        rate = float(row[5]) if row[5] else 0
+        pcs = int(row[2]) if row[2] else 0
+        qty = float(row[3]) if row[3] else 0
+        rate = float(row[4]) if row[4] else 0
+        amount = float(row[5]) if row[5] else 0
         
-        # Priority: Bales first (textile), then quantity, pieces, meter
-        actual_qty = bales or quantity or pieces or meter or 1
-        amount = actual_qty * rate
+        # If amount is 0, calculate it
+        if not amount:
+            amount = (qty or pcs) * rate
         
-        items[order_id].append({
+        items[conf_no].append({
             "product_name": row[1] or "Unknown Item",
-            "pieces": pieces,
-            "quantity": actual_qty,
+            "pieces": pcs,
+            "quantity": qty or pcs or 1,
             "rate": rate,
             "amount": amount,
-            "pending_bales": row[6] or 0,
-            "delivered_bales": row[7] or 0,
-            "remark": row[8],
+            "bill_no": row[6],
         })
-    logger.info(f"Fetched items for {len(items)} orders")
+    logger.info(f"Fetched invoice items for {len(items)} orders")
     return items
 
 
@@ -275,13 +273,13 @@ def run_sync():
         token = get_admin_token()
 
         logger.info("Pushing data to cloud...")
-        # Convert order_items keys to strings for JSON
+        # Items are keyed by ConfNo (links orders to invoices)
         items_str_keys = {str(k): v for k, v in order_items.items()}
         
-        # Pre-calculate total_amount per order
+        # Pre-calculate total_amount per order using ConfNo
         for order in orders:
-            eid = order["erp_order_id"]
-            items_for_order = order_items.get(eid, [])
+            conf = order["conf_no"]
+            items_for_order = order_items.get(conf, [])
             order["total_amount"] = sum(item["amount"] for item in items_for_order)
         
         sync_data = {

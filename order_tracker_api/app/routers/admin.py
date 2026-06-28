@@ -193,8 +193,9 @@ async def receive_sync_data(
             if not erp_id:
                 continue
 
-            # Calculate total amount from items (or use pre-calculated from sync agent)
-            items_for_order = order_items_data.get(str(erp_id), [])
+            # Get items by conf_no (links order to invoice items)
+            conf_no = order_data.get("conf_no")
+            items_for_order = order_items_data.get(str(conf_no), []) if conf_no else []
             total_amount = float(order_data.get("total_amount", 0))
             if not total_amount:
                 for item in items_for_order:
