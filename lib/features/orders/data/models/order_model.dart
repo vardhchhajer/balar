@@ -4,6 +4,8 @@ class OrderItemModel {
   final int quantity;
   final double unitPrice;
   final double amount;
+  final int deliveredQty;
+  final int pendingQty;
 
   const OrderItemModel({
     required this.id,
@@ -11,6 +13,8 @@ class OrderItemModel {
     required this.quantity,
     required this.unitPrice,
     required this.amount,
+    this.deliveredQty = 0,
+    this.pendingQty = 0,
   });
 
   factory OrderItemModel.fromJson(Map<String, dynamic> json) => OrderItemModel(
@@ -19,6 +23,8 @@ class OrderItemModel {
         quantity: json['quantity'] as int? ?? 0,
         unitPrice: (json['unit_price'] as num?)?.toDouble() ?? 0.0,
         amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+        deliveredQty: json['delivered_qty'] as int? ?? 0,
+        pendingQty: json['pending_qty'] as int? ?? 0,
       );
 }
 

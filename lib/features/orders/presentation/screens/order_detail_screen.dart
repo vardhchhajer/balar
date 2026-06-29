@@ -189,21 +189,72 @@ class OrderDetailScreen extends ConsumerWidget {
               Text('Order Items', style: AppTextStyles.heading3),
               const SizedBox(height: 12),
               ...order.items.map((item) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Row(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      flex: 3,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(item.productName, style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w500)),
+                              const SizedBox(height: 2),
+                              Text('${item.quantity} Bales @ \u20B9${item.unitPrice.toStringAsFixed(0)}/pc', style: AppTextStyles.bodySmall),
+                            ],
+                          ),
+                        ),
+                        if (item.amount > 0)
+                          Text('\u20B9${item.amount.toStringAsFixed(0)}', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                    if (item.quantity > 0) ...[
+                      const SizedBox(height: 6),
+                      Row(
                         children: [
-                          Text(item.productName, style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w500)),
-                          Text('${item.quantity} x \u20B9${item.unitPrice.toStringAsFixed(2)}', style: AppTextStyles.bodySmall),
+                          if (item.deliveredQty > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              margin: const EdgeInsets.only(right: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'Dispatched: ${item.deliveredQty}',
+                                style: AppTextStyles.bodySmall.copyWith(color: Colors.green[700], fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          if (item.pendingQty > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'Pending: ${item.pendingQty}',
+                                style: AppTextStyles.bodySmall.copyWith(color: Colors.orange[800], fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          if (item.deliveredQty == 0 && item.pendingQty == 0 && item.quantity > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'Awaiting dispatch',
+                                style: AppTextStyles.bodySmall.copyWith(color: Colors.grey[600]),
+                              ),
+                            ),
                         ],
                       ),
-                    ),
-                    Text('\u20B9${item.amount.toStringAsFixed(2)}', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+                    ],
                   ],
                 ),
               )),
@@ -212,7 +263,9 @@ class OrderDetailScreen extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('Total Amount', style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.w600)),
-                  Text('\u20B9${order.totalAmount.toStringAsFixed(2)}', style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.w700, color: AppColors.primary)),
+                  order.totalAmount > 0
+                    ? Text('\u20B9${order.totalAmount.toStringAsFixed(0)}', style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.w700, color: AppColors.primary))
+                    : Text('Awaiting Invoice', style: AppTextStyles.bodyMedium.copyWith(color: Colors.grey[600], fontStyle: FontStyle.italic)),
                 ],
               ),
             ],
