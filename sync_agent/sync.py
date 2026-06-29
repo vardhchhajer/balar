@@ -475,19 +475,14 @@ def run_sync():
         # Items keyed by Sal_Order_Id (erp_order_id)
         items_str_keys = {str(k): v for k, v in order_items.items()}
 
-        # Total amount per order — strictly from ERP values, no calculation:
-        # - Invoiced items: Sal_Inv_Amount from SALES_INVOICE_DETAIL (already in items)
-        # - Pending items (no invoice): Rate * Bales from SALES_ORDER_DETAIL
+        # Total amount per order — ONLY from invoice (Sal_Inv_Amount).
+        # Pending orders (no invoice) get total_amount=0 because the ERP
+        # does not store a pre-computed order value (rate is per-piece but
+        # pieces-per-bale is unknown until packing/dispatch).
         for order in orders:
             erp_id = order["erp_order_id"]
             items_for_order = order_items.get(erp_id, [])
-            # Use invoice amount where available, else Rate*Bales from ERP
-            total = 0.0
-            for item in items_for_order:
-                if item["amount"] > 0:
-                    total += item["amount"]
-                else:
-                    total += item["rate"] * item["quantity"]
+            total = sum(item["amount"] for item in items_for_order)
             order["total_amount"] = total
 
         logger.info(f"Prepared {len(orders)} orders for sync (all included)")
