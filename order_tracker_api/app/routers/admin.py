@@ -241,16 +241,10 @@ async def receive_sync_data(
             # Get items by erp_order_id (direct FK from SALES_INVOICE_DETAIL.Sal_Order_Id)
             conf_no = order_data.get("conf_no")
             items_for_order = order_items_data.get(str(erp_id), []) if erp_id else []
+            # Trust the sync's total strictly — it is the sum of real invoice
+            # amounts (Sal_Inv_Amount), or 0 for orders not yet invoiced.
+            # Do NOT recalculate; recalculating would invent a value for pending orders.
             total_amount = float(order_data.get("total_amount", 0))
-            if not total_amount:
-                for item in items_for_order:
-                    amount = float(item.get("amount", 0))
-                    if amount:
-                        total_amount += amount
-                    else:
-                        rate = float(item.get("rate", 0))
-                        qty = float(item.get("quantity", 0) or item.get("pieces", 0) or 0)
-                        total_amount += rate * qty
 
             # Check if order already exists
             result = await db.execute(
