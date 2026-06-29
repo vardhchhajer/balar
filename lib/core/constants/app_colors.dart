@@ -42,6 +42,12 @@ class AppColors {
   static const Color cancelledBg = Color(0xFFF8D7DA);
   static const Color cancelledText = Color(0xFF721C24);
 
+  static const Color partialBg = Color(0xFFFFF3E0);
+  static const Color partialText = Color(0xFFE65100);
+
+  static const Color stoppedBg = Color(0xFFEDE7F6);
+  static const Color stoppedText = Color(0xFF4527A0);
+
   static const Color unavailableBg = Color(0xFFE2E3E5);
   static const Color unavailableText = Color(0xFF383D41);
 }

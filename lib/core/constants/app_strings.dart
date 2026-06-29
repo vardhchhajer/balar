@@ -40,6 +40,8 @@ class AppStrings {
   static const String statusDispatched = 'Dispatched';
   static const String statusDelivered = 'Delivered';
   static const String statusCancelled = 'Cancelled';
+  static const String statusPartiallyDispatched = 'Partially Dispatched';
+  static const String statusStopped = 'Stopped';
   static const String statusUnavailable = 'Status Unavailable';
 
   // Profile

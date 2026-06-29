@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:baalar/core/constants/app_colors.dart';
 import 'package:baalar/core/constants/app_strings.dart';
 
-enum DisplayStatus { notDispatched, dispatched, delivered, cancelled, unavailable }
+enum DisplayStatus { notDispatched, dispatched, partiallyDispatched, delivered, cancelled, stopped, unavailable }
 
 class DispatchStatusBadge extends StatelessWidget {
   final String? status;
@@ -52,10 +52,14 @@ class DispatchStatusBadge extends StatelessWidget {
         return DisplayStatus.notDispatched;
       case 'dispatched':
         return DisplayStatus.dispatched;
+      case 'partially dispatched':
+        return DisplayStatus.partiallyDispatched;
       case 'delivered':
         return DisplayStatus.delivered;
       case 'cancelled':
         return DisplayStatus.cancelled;
+      case 'stopped':
+        return DisplayStatus.stopped;
       default:
         return DisplayStatus.unavailable;
     }
@@ -90,6 +94,20 @@ class DispatchStatusBadge extends StatelessWidget {
           icon: '✕',
           backgroundColor: AppColors.cancelledBg,
           textColor: AppColors.cancelledText,
+        );
+      case DisplayStatus.partiallyDispatched:
+        return _BadgeConfig(
+          label: AppStrings.statusPartiallyDispatched,
+          icon: '◐',
+          backgroundColor: AppColors.partialBg,
+          textColor: AppColors.partialText,
+        );
+      case DisplayStatus.stopped:
+        return _BadgeConfig(
+          label: AppStrings.statusStopped,
+          icon: '⊘',
+          backgroundColor: AppColors.stoppedBg,
+          textColor: AppColors.stoppedText,
         );
       case DisplayStatus.unavailable:
         return _BadgeConfig(

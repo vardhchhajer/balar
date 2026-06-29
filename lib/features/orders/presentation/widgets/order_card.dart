@@ -54,10 +54,10 @@ class OrderCard extends StatelessWidget {
                   Row(
                     children: [
                       Text(
-                        '\u20B9${order.totalAmount.toStringAsFixed(0)}',
+                        order.totalAmount > 0 ? '\u20B9${order.totalAmount.toStringAsFixed(0)}' : '\u2014',
                         style: AppTextStyles.bodyMedium.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: AppColors.primary,
+                          color: order.totalAmount > 0 ? AppColors.primary : Colors.grey,
                         ),
                       ),
                       const SizedBox(width: 4),

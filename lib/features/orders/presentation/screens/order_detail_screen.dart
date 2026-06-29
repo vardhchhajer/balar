@@ -66,6 +66,7 @@ class OrderDetailScreen extends ConsumerWidget {
   Widget _buildHeroBanner(OrderModel order) {
     final status = order.dispatchStatus.toLowerCase();
     final isDispatched = status == 'dispatched' || status == 'delivered';
+    final isPartial = status == 'partially dispatched';
     final isPending = status == 'pending' ||
         status == 'processing' ||
         status == 'awaiting dispatch';
@@ -81,6 +82,11 @@ class OrderDetailScreen extends ConsumerWidget {
       title = AppStrings.dispatched;
       subtitle =
           '${AppStrings.dispatchDate}: ${DateFormatter.formatDateLong(order.dispatchDate)}';
+    } else if (isPartial) {
+      bgColor = AppColors.partialBg;
+      icon = Icons.timelapse;
+      title = AppStrings.statusPartiallyDispatched;
+      subtitle = 'Some items have been dispatched';
     } else if (isPending) {
       bgColor = AppColors.notDispatchedBg;
       icon = Icons.access_time;
@@ -207,8 +213,13 @@ class OrderDetailScreen extends ConsumerWidget {
                             ],
                           ),
                         ),
-                        if (item.amount > 0)
-                          Text('\u20B9${item.amount.toStringAsFixed(0)}', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+                        Text(
+                          item.amount > 0 ? '\u20B9${item.amount.toStringAsFixed(0)}' : '\u2014',
+                          style: AppTextStyles.bodyMedium.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: item.amount > 0 ? null : Colors.grey,
+                          ),
+                        ),
                       ],
                     ),
                     if (item.quantity > 0) ...[
