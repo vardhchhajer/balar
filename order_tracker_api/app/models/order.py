@@ -35,5 +35,7 @@ class OrderItem(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     unit_price: Mapped[float] = mapped_column(Float, nullable=False)
     amount: Mapped[float] = mapped_column(Float, nullable=False)
+    delivered_qty: Mapped[int] = mapped_column(Integer, default=0)
+    pending_qty: Mapped[int] = mapped_column(Integer, default=0)
 
     order: Mapped["Order"] = relationship(back_populates="items")

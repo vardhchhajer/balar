@@ -295,17 +295,21 @@ async def receive_sync_data(
                 order_id = new_order.id
                 orders_created += 1
 
-            # Insert items
+            # Insert items — amounts come directly from ERP, no calculation
             for item_data in items_for_order:
                 rate = float(item_data.get("rate", 0))
-                qty = float(item_data.get("quantity", 0) or item_data.get("pieces", 0) or 1)
-                amount = float(item_data.get("amount", 0)) or (qty * rate)
+                qty = float(item_data.get("quantity", 0) or 1)
+                amount = float(item_data.get("amount", 0))
+                delivered = int(item_data.get("delivered_bales", 0) or 0)
+                pending = int(item_data.get("pending_bales", 0) or 0)
                 item = OrderItem(
                     order_id=order_id,
                     product_name=item_data.get("product_name", "Unknown"),
                     quantity=int(qty) if qty else 1,
                     unit_price=rate,
                     amount=amount,
+                    delivered_qty=delivered,
+                    pending_qty=pending,
                 )
                 db.add(item)
                 items_created += 1

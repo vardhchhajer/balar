@@ -69,19 +69,8 @@ def date_to_str(val):
 
 
 def fetch_orders(conn):
-    """
-    Fetch orders with CORRECT dispatch date logic.
-    
-    KEY INSIGHT from diagnosis: ConfNo is REUSED across financial years.
-    ConfNo 2230 has orders from 2019 AND 2026 for DIFFERENT parties.
-    
-    FIX: Join to SALES_INVOICE using ConfNo + SAME Lgr_Id (party).
-    This ensures we only pick up invoices that belong to THIS party's order.
-    
-    Also: TotalQty is NULL for all recent orders, so we use invoice PcsTotal
-    for dispatch tracking. FLAG is always "S" so we derive status from 
-    whether invoices exist for this specific order+party combination.
-    """
+    """Orders with real status from SALES_ORDER_DETAIL delivery tracking.
+    Dispatch date tied to the order precisely via SALES_INVOICE_DETAIL.Sal_Order_Id."""
     cursor = conn.cursor()
     cursor.execute("""
         SELECT
@@ -92,25 +81,18 @@ def fetch_orders(conn):
             LTRIM(RTRIM(CAST(so.Lgr_Id AS VARCHAR(50)))) AS party_code,
             so.Agent_Id,
             so.Order_Date,
-            (SELECT MAX(si.Sal_Inv_Vdate) 
-             FROM SALES_INVOICE si 
-             WHERE si.ConfNo = so.ConfNo 
-               AND si.Lgr_Id = so.Lgr_Id
-               AND si.ConfNo IS NOT NULL 
-               AND si.ConfNo != 0
-            ) AS Dispatch_Date,
+            (SELECT MAX(si.Sal_Inv_Vdate)
+             FROM SALES_INVOICE si
+             JOIN SALES_INVOICE_DETAIL sid ON si.Sal_Inv_Id = sid.Sal_Inv_Id
+             WHERE sid.Sal_Order_Id = so.Sal_Order_Id) AS Dispatch_Date,
             so.Stop,
-            so.FLAG,
             so.Narration1,
-            so.TotalQty,
-            so.Total_Bales,
-            (SELECT COUNT(*) 
-             FROM SALES_INVOICE si3
-             WHERE si3.ConfNo = so.ConfNo
-               AND si3.Lgr_Id = so.Lgr_Id
-               AND si3.ConfNo IS NOT NULL
-               AND si3.ConfNo != 0
-            ) AS Invoice_Count
+            (SELECT ISNULL(SUM(sod.Bales), 0) FROM SALES_ORDER_DETAIL sod
+             WHERE sod.Sal_Order_Id = so.Sal_Order_Id
+               AND (sod.Cancel = 0 OR sod.Cancel IS NULL)) AS OrderedBales,
+            (SELECT ISNULL(SUM(sod.DeliveredBales), 0) FROM SALES_ORDER_DETAIL sod
+             WHERE sod.Sal_Order_Id = so.Sal_Order_Id
+               AND (sod.Cancel = 0 OR sod.Cancel IS NULL)) AS DeliveredBales
         FROM SALES_ORDER so
         LEFT JOIN LEDGER_MASTER lm ON so.Lgr_Id = lm.Lgr_Id
         WHERE so.Order_Date >= DATEADD(YEAR, -1, GETDATE())
@@ -120,17 +102,18 @@ def fetch_orders(conn):
     for row in cursor.fetchall():
         dispatch_date = date_to_str(row[7])
         order_date = date_to_str(row[6])
-        invoice_count = int(row[13]) if row[13] else 0
+        ordered_bales = float(row[10]) if row[10] else 0
+        delivered_bales = float(row[11]) if row[11] else 0
 
-        # Determine status from actual invoice existence (FLAG is always "S")
-        if row[8]:  # is_stopped
+        if row[8]:  # Stop flag
             dispatch_status = "Stopped"
-        elif invoice_count > 0 and dispatch_date:
-            dispatch_status = "Dispatched"
-        else:
+        elif delivered_bales <= 0:
             dispatch_status = "Pending"
+        elif delivered_bales < ordered_bales:
+            dispatch_status = "Partially Dispatched"
+        else:
+            dispatch_status = "Dispatched"
 
-        # Use ConfNo as order number if Sales_OrderNo is empty or just "."
         raw_order_no = str(row[1] or "").strip()
         conf_no = row[2]
         if not raw_order_no or raw_order_no in ("", "."):
@@ -149,63 +132,67 @@ def fetch_orders(conn):
             "dispatch_date": dispatch_date,
             "is_stopped": bool(row[8]) if row[8] else False,
             "flag": dispatch_status,
-            "narration": str(row[10] or "").strip(),
-            "total_qty": float(row[11]) if row[11] else 0,
-            "total_bales": row[12] or 0,
+            "narration": str(row[9] or "").strip(),
+            "ordered_bales": ordered_bales,
+            "delivered_bales": delivered_bales,
         })
     logger.info(f"Fetched {len(orders)} orders")
     return orders
 
 
 def fetch_order_items(conn):
-    """
-    Fetch items using SALES_INVOICE_DETAIL.Sal_Order_Id (direct FK to SALES_ORDER).
-    ConfNo is reused across years — Sal_Order_Id is the only reliable link.
-    Items are keyed by Sal_Order_Id (= erp_order_id).
-    """
+    """Order line items from SALES_ORDER_DETAIL (what was ORDERED) - ONE line per item.
+    Amount = actual invoiced value summed from SALES_INVOICE_DETAIL for that order+item.
+    Keyed by Sal_Order_Id (= erp_order_id)."""
     cursor = conn.cursor()
     cursor.execute("""
         SELECT
-            sid.Sal_Order_Id,
+            sod.Sal_Order_Id,
             im.Item_Name,
-            sid.Sal_Inv_Pcs,
-            sid.Sal_Inv_Qty,
-            sid.Sal_Inv_Rate,
-            sid.Sal_Inv_Amount,
-            si.Sal_Inv_Bill_No
-        FROM SALES_INVOICE si
-        JOIN SALES_INVOICE_DETAIL sid ON si.Sal_Inv_Id = sid.Sal_Inv_Id
-        LEFT JOIN ITEM_MASTER im ON sid.Item_Id = im.Item_Id
-        WHERE si.Sal_Inv_Vdate >= DATEADD(YEAR, -1, GETDATE())
-          AND sid.Sal_Order_Id IS NOT NULL
-          AND sid.Sal_Order_Id != 0
+            SUM(sod.Bales) AS ordered_bales,
+            SUM(sod.DeliveredBales) AS delivered_bales,
+            SUM(sod.PendingBales) AS pending_bales,
+            MAX(sod.Rate) AS rate,
+            ISNULL(MAX(inv.inv_amount), 0) AS inv_amount,
+            ISNULL(MAX(inv.inv_pcs), 0) AS inv_pcs
+        FROM SALES_ORDER_DETAIL sod
+        JOIN SALES_ORDER so ON so.Sal_Order_Id = sod.Sal_Order_Id
+        LEFT JOIN ITEM_MASTER im ON sod.Item_Id = im.Item_Id
+        LEFT JOIN (
+            SELECT sid.Sal_Order_Id, sid.Item_Id,
+                   SUM(sid.Sal_Inv_Amount) AS inv_amount,
+                   SUM(sid.Sal_Inv_Pcs)    AS inv_pcs
+            FROM SALES_INVOICE_DETAIL sid
+            WHERE sid.Sal_Order_Id IS NOT NULL AND sid.Sal_Order_Id != 0
+            GROUP BY sid.Sal_Order_Id, sid.Item_Id
+        ) inv ON inv.Sal_Order_Id = sod.Sal_Order_Id AND inv.Item_Id = sod.Item_Id
+        WHERE so.Order_Date >= DATEADD(YEAR, -1, GETDATE())
+          AND (sod.Cancel = 0 OR sod.Cancel IS NULL)
+        GROUP BY sod.Sal_Order_Id, sod.Item_Id, im.Item_Name
     """)
     items = {}
     for row in cursor.fetchall():
         order_id = row[0]
         if not order_id:
             continue
-        if order_id not in items:
-            items[order_id] = []
-        
-        pcs = float(row[2]) if row[2] else 0
-        qty = float(row[3]) if row[3] else 0
-        rate = float(row[4]) if row[4] else 0
-        amount = float(row[5]) if row[5] else 0
-        
-        # If amount is 0, calculate it
-        if not amount:
-            amount = (qty or pcs) * rate
-        
-        items[order_id].append({
+        ordered_bales = float(row[2]) if row[2] else 0
+        delivered_bales = float(row[3]) if row[3] else 0
+        pending_bales = float(row[4]) if row[4] else 0
+        rate = float(row[5]) if row[5] else 0
+        inv_amount = float(row[6]) if row[6] else 0
+        inv_pcs = float(row[7]) if row[7] else 0
+
+        items.setdefault(order_id, []).append({
             "product_name": str(row[1] or "Unknown Item").strip(),
-            "pieces": int(pcs),
-            "quantity": qty or pcs or 1,
+            "pieces": int(inv_pcs),
+            "quantity": ordered_bales,
+            "delivered_bales": delivered_bales,
+            "pending_bales": pending_bales,
             "rate": rate,
-            "amount": amount,
-            "bill_no": str(row[6] or "").strip(),
+            "amount": inv_amount,
+            "bill_no": "",
         })
-    logger.info(f"Fetched invoice items for {len(items)} orders (by Sal_Order_Id)")
+    logger.info(f"Fetched order-detail items for {len(items)} orders")
     return items
 
 
@@ -484,38 +471,36 @@ def run_sync():
         logger.info("Authenticating with cloud API...")
         token = get_admin_token()
 
-        # Step 3: Filter and prepare data
-        # Items are now keyed by Sal_Order_Id (erp_order_id), not ConfNo
+        # Step 3: Prepare data — include ALL orders (pending + dispatched)
+        # Items keyed by Sal_Order_Id (erp_order_id)
         items_str_keys = {str(k): v for k, v in order_items.items()}
 
-        # Calculate total_amount per order from invoice items
-        # Skip orders with Rs.0 total (no invoice = not dispatched yet)
-        orders_with_amount = []
-        orders_skipped = 0
+        # Total amount per order — strictly from ERP values, no calculation:
+        # - Invoiced items: Sal_Inv_Amount from SALES_INVOICE_DETAIL (already in items)
+        # - Pending items (no invoice): Rate * Bales from SALES_ORDER_DETAIL
         for order in orders:
             erp_id = order["erp_order_id"]
             items_for_order = order_items.get(erp_id, [])
-            total = sum(item["amount"] for item in items_for_order)
-            if total > 0:
-                order["total_amount"] = total
-                orders_with_amount.append(order)
-            else:
-                orders_skipped += 1
+            # Use invoice amount where available, else Rate*Bales from ERP
+            total = 0.0
+            for item in items_for_order:
+                if item["amount"] > 0:
+                    total += item["amount"]
+                else:
+                    total += item["rate"] * item["quantity"]
+            order["total_amount"] = total
 
-        logger.info(
-            f"Prepared {len(orders_with_amount)} orders with invoiced items "
-            f"(skipped {orders_skipped} with Rs.0 or no invoice)"
-        )
+        logger.info(f"Prepared {len(orders)} orders for sync (all included)")
 
         # Step 4: Push order data to cloud
         logger.info("Pushing data to cloud...")
         sync_data = {
-            "orders": orders_with_amount,
+            "orders": orders,
             "order_items": items_str_keys,
             "invoices": invoices,
             "parties": parties,
             "synced_at": datetime.now().isoformat(),
-            "total_records": len(orders_with_amount) + len(invoices) + len(parties),
+            "total_records": len(orders) + len(invoices) + len(parties),
         }
         result = push_to_cloud(token, sync_data)
         logger.info(f"Cloud sync result: {result}")

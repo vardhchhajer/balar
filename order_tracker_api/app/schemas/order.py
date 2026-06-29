@@ -11,6 +11,8 @@ class OrderItemResponse(BaseModel):
     quantity: int
     unit_price: float
     amount: float
+    delivered_qty: int = 0
+    pending_qty: int = 0
 
 
 class OrderResponse(BaseModel):
