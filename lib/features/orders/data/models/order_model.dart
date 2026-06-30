@@ -31,6 +31,7 @@ class OrderItemModel {
 class OrderModel {
   final int id;
   final String orderNo;
+  final String? partyName;
   final String orderDate;
   final String dispatchStatus;
   final String? dispatchDate;
@@ -43,6 +44,7 @@ class OrderModel {
   const OrderModel({
     required this.id,
     required this.orderNo,
+    this.partyName,
     required this.orderDate,
     required this.dispatchStatus,
     this.dispatchDate,
@@ -56,6 +58,7 @@ class OrderModel {
   factory OrderModel.fromJson(Map<String, dynamic> json) => OrderModel(
         id: json['id'] as int? ?? 0,
         orderNo: json['order_no'] as String? ?? '',
+        partyName: json['party_name'] as String?,
         orderDate: json['order_date'] as String? ?? '',
         dispatchStatus: json['dispatch_status'] as String? ?? 'Pending',
         dispatchDate: json['dispatch_date'] as String?,

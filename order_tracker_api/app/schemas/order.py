@@ -20,6 +20,7 @@ class OrderResponse(BaseModel):
 
     id: int
     order_no: str
+    party_name: Optional[str] = None
     order_date: date
     dispatch_status: str
     dispatch_date: Optional[date] = None

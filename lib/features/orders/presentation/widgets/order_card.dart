@@ -38,6 +38,15 @@ class OrderCard extends StatelessWidget {
                   DispatchStatusBadge(status: order.dispatchStatus),
                 ],
               ),
+              if (order.partyName != null && order.partyName!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  order.partyName!,
+                  style: AppTextStyles.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               Text(
                 '${AppStrings.orderDate}: ${DateFormatter.formatDate(order.orderDate)}',

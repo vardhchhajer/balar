@@ -131,6 +131,11 @@ class OrderDetailScreen extends ConsumerWidget {
           value: order.orderNo,
           isBold: true,
         ),
+        if (order.partyName != null && order.partyName!.isNotEmpty)
+          _InfoRow(
+            label: 'Party',
+            value: order.partyName!,
+          ),
         _InfoRow(
           label: AppStrings.orderDate,
           value: DateFormatter.formatDateLong(order.orderDate),

@@ -12,6 +12,7 @@ class Order(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     party_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    party_name: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
     erp_order_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, unique=True)
     order_no: Mapped[str] = mapped_column(String(50), nullable=False)
     order_date: Mapped[date] = mapped_column(Date, nullable=False)
