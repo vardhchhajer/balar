@@ -9,13 +9,15 @@ enum AuthStatus { initial, authenticated, unauthenticated, loading }
 class AuthState {
   final AuthStatus status;
   final String? errorMessage;
+  final String? role;
 
-  const AuthState({required this.status, this.errorMessage});
+  const AuthState({required this.status, this.errorMessage, this.role});
 
-  AuthState copyWith({AuthStatus? status, String? errorMessage}) {
+  AuthState copyWith({AuthStatus? status, String? errorMessage, String? role}) {
     return AuthState(
       status: status ?? this.status,
       errorMessage: errorMessage,
+      role: role ?? this.role,
     );
   }
 }
@@ -37,7 +39,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       final token = await _secureStorage.getAccessToken();
       if (token != null && token.isNotEmpty) {
-        state = const AuthState(status: AuthStatus.authenticated);
+        final role = await _secureStorage.getRole();
+        state = AuthState(status: AuthStatus.authenticated, role: role);
       } else {
         state = const AuthState(status: AuthStatus.unauthenticated);
       }
@@ -50,7 +53,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = const AuthState(status: AuthStatus.loading);
     try {
       await _authRepository.login(username, password);
-      state = const AuthState(status: AuthStatus.authenticated);
+      final role = await _secureStorage.getRole();
+      state = AuthState(status: AuthStatus.authenticated, role: role);
     } on DioException catch (e) {
       String message;
       final error = e.error;

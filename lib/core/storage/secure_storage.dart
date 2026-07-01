@@ -7,6 +7,7 @@ class SecureStorage {
   static const _refreshTokenKey = 'balar_refresh_token';
   static const _partyCodeKey = 'balar_party_code';
   static const _fullNameKey = 'balar_full_name';
+  static const _roleKey = 'balar_role';
 
   final FlutterSecureStorage? _secureStorage;
   
@@ -49,14 +50,22 @@ class SecureStorage {
   Future<void> saveUserInfo({
     required String partyCode,
     required String fullName,
+    String? role,
   }) async {
     if (kIsWeb) {
       _memStore[_partyCodeKey] = partyCode;
       _memStore[_fullNameKey] = fullName;
+      if (role != null) _memStore[_roleKey] = role;
     } else {
       await _secureStorage!.write(key: _partyCodeKey, value: partyCode);
       await _secureStorage!.write(key: _fullNameKey, value: fullName);
+      if (role != null) await _secureStorage!.write(key: _roleKey, value: role);
     }
+  }
+
+  Future<String?> getRole() async {
+    if (kIsWeb) return _memStore[_roleKey];
+    return await _secureStorage!.read(key: _roleKey);
   }
 
   Future<String?> getPartyCode() async {

@@ -32,6 +32,7 @@ class AuthRepository {
       await _secureStorage.saveUserInfo(
         partyCode: data['party_code'] ?? '',
         fullName: data['full_name'] ?? '',
+        role: data['role'] as String?,
       );
     } catch (_) {
       // Non-critical: profile info is supplementary

@@ -1,15 +1,17 @@
 class OutstandingBillModel {
   final int id;
+  final String partyCode;
   final String billNo;
   final String billDate;
   final double totalAmount;
   final double amountPaid;
   final double amountOutstanding;
   final String? dueDate;
-  final String? description;
+  final String? description; // party_name is stored here
 
   const OutstandingBillModel({
     required this.id,
+    required this.partyCode,
     required this.billNo,
     required this.billDate,
     required this.totalAmount,
@@ -22,6 +24,7 @@ class OutstandingBillModel {
   factory OutstandingBillModel.fromJson(Map<String, dynamic> json) =>
       OutstandingBillModel(
         id: json['id'] as int,
+        partyCode: json['party_code'] as String? ?? '',
         billNo: json['bill_no'] as String,
         billDate: json['bill_date'] as String,
         totalAmount: (json['total_amount'] as num).toDouble(),
@@ -30,6 +33,8 @@ class OutstandingBillModel {
         dueDate: json['due_date'] as String?,
         description: json['description'] as String?,
       );
+
+  String get partyName => description ?? 'Unknown Party';
 }
 
 class OutstandingListResponse {

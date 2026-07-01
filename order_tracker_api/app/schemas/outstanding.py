@@ -8,6 +8,7 @@ class OutstandingBillResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    party_code: str
     bill_no: str
     bill_date: date
     total_amount: float
