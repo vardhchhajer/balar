@@ -257,6 +257,7 @@ async def receive_sync_data(
                 existing_order.party_code = str(order_data.get("party_code", ""))
                 existing_order.party_name = order_data.get("party_name", "")
                 existing_order.invoice_no = order_data.get("invoice_no")
+                existing_order.tracking_no = order_data.get("tracking_no")
                 existing_order.order_no = order_data.get("order_no", f"ORD-{erp_id}") or f"ORD-{erp_id}"
                 existing_order.dispatch_status = "Stopped" if order_data.get("is_stopped") else (order_data.get("flag") or "Pending")
                 existing_order.total_amount = total_amount
@@ -283,7 +284,7 @@ async def receive_sync_data(
                     dispatch_status="Stopped" if order_data.get("is_stopped") else (order_data.get("flag") or "Pending"),
                     dispatch_date=datetime.fromisoformat(order_data["dispatch_date"]).date() if order_data.get("dispatch_date") else None,
                     invoice_no=order_data.get("invoice_no"),
-                    tracking_no=None,
+                    tracking_no=order_data.get("tracking_no"),
                     total_amount=total_amount,
                     remarks=order_data.get("narration"),
                 )

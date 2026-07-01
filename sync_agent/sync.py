@@ -105,7 +105,15 @@ def fetch_orders(conn):
                  FROM SALES_INVOICE si3
                  JOIN SALES_INVOICE_DETAIL sid3 ON si3.Sal_Inv_Id = sid3.Sal_Inv_Id
                  WHERE sid3.Sal_Order_Id = so.Sal_Order_Id
-                 FOR XML PATH('')), 1, 2, '')) AS Invoice_Nos
+                 FOR XML PATH('')), 1, 2, '')) AS Invoice_Nos,
+            (SELECT STUFF((
+                 SELECT DISTINCT ', ' + si4.Sal_Inv_LrNo
+                 FROM SALES_INVOICE si4
+                 JOIN SALES_INVOICE_DETAIL sid4 ON si4.Sal_Inv_Id = sid4.Sal_Inv_Id
+                 WHERE sid4.Sal_Order_Id = so.Sal_Order_Id
+                   AND si4.Sal_Inv_LrNo IS NOT NULL
+                   AND LTRIM(RTRIM(si4.Sal_Inv_LrNo)) != ''
+                 FOR XML PATH('')), 1, 2, '')) AS LR_Nos
         FROM SALES_ORDER so
         LEFT JOIN LEDGER_MASTER lm ON so.Lgr_Id = lm.Lgr_Id
         WHERE so.Order_Date >= DATEADD(YEAR, -1, GETDATE())
@@ -119,6 +127,7 @@ def fetch_orders(conn):
         delivered_bales = float(row[11]) if row[11] else 0
         net_total_with_gst = float(row[12]) if row[12] else 0
         invoice_nos = str(row[13] or "").strip()
+        lr_nos = str(row[14] or "").strip()
 
         if row[8]:  # Stop flag
             dispatch_status = "Stopped"
@@ -152,6 +161,7 @@ def fetch_orders(conn):
             "delivered_bales": delivered_bales,
             "net_total": net_total_with_gst,
             "invoice_no": invoice_nos if invoice_nos else None,
+            "tracking_no": lr_nos if lr_nos else None,
         })
     logger.info(f"Fetched {len(orders)} orders")
     return orders
