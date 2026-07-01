@@ -331,6 +331,72 @@ def fetch_agents(conn):
     return agents
 
 
+def fetch_outstanding(conn):
+    """Fetch bill-wise outstanding per party.
+    Outstanding = Sal_Inv_NetTotal - any receipts recorded in RECEIPT_BILLDETAIL.
+    Currently RECEIPT_BILLDETAIL is empty so all invoiced bills are fully outstanding."""
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT
+            LTRIM(RTRIM(CAST(si.Lgr_Id AS VARCHAR(50)))) AS party_code,
+            CAST(si.Sal_Inv_Bill_No AS VARCHAR(50)) AS bill_no,
+            si.Sal_Inv_Vdate AS bill_date,
+            si.Sal_Inv_NetTotal AS total_amount,
+            ISNULL((SELECT SUM(rb.Amount)
+                    FROM RECEIPT_BILLDETAIL rb
+                    WHERE rb.BillNo = CAST(si.Sal_Inv_Bill_No AS NVARCHAR(50))
+                      AND rb.Lgr_Id = si.Lgr_Id), 0) AS amount_paid,
+            si.Sal_Inv_NetTotal - ISNULL((SELECT SUM(rb.Amount)
+                    FROM RECEIPT_BILLDETAIL rb
+                    WHERE rb.BillNo = CAST(si.Sal_Inv_Bill_No AS NVARCHAR(50))
+                      AND rb.Lgr_Id = si.Lgr_Id), 0) AS amount_outstanding,
+            DATEADD(DAY, ISNULL(si.Sal_CrDays, 30), si.Sal_Inv_Vdate) AS due_date,
+            lm.Lgr_name AS party_name
+        FROM SALES_INVOICE si
+        LEFT JOIN LEDGER_MASTER lm ON si.Lgr_Id = lm.Lgr_Id
+        WHERE si.Sal_Inv_Vdate >= DATEADD(YEAR, -1, GETDATE())
+          AND si.Sal_Inv_NetTotal > 0
+          AND si.Flag = 'S'
+          AND (si.Sal_Inv_NetTotal - ISNULL((SELECT SUM(rb.Amount)
+                    FROM RECEIPT_BILLDETAIL rb
+                    WHERE rb.BillNo = CAST(si.Sal_Inv_Bill_No AS NVARCHAR(50))
+                      AND rb.Lgr_Id = si.Lgr_Id), 0)) > 0
+        ORDER BY si.Sal_Inv_Vdate DESC
+    """)
+    bills = []
+    for row in cursor.fetchall():
+        bills.append({
+            "party_code": str(row[0] or "").strip(),
+            "bill_no": str(row[1] or "").strip(),
+            "bill_date": date_to_str(row[2]),
+            "total_amount": float(row[3]) if row[3] else 0,
+            "amount_paid": float(row[4]) if row[4] else 0,
+            "amount_outstanding": float(row[5]) if row[5] else 0,
+            "due_date": date_to_str(row[6]),
+            "description": str(row[7] or "").strip(),
+        })
+    logger.info(f"Fetched {len(bills)} outstanding bills")
+    return bills
+
+
+def push_outstanding(token, bills):
+    """Push outstanding bills to the cloud API."""
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    response = requests.post(
+        f"{API_URL}/admin/sync/outstanding",
+        json={"bills": bills},
+        headers=headers,
+        timeout=300,
+    )
+    if response.status_code != 200:
+        logger.error(f"Outstanding sync response ({response.status_code}): {response.text[:500]}")
+    response.raise_for_status()
+    return response.json()
+
+
 def push_to_cloud(token, data):
     headers = {
         "Authorization": f"Bearer {token}",
@@ -491,6 +557,7 @@ def run_sync():
         invoices = fetch_invoices(conn)
         parties = fetch_parties(conn)
         agents = fetch_agents(conn)
+        outstanding = fetch_outstanding(conn)
         conn.close()
         logger.info("SQL Server connection closed")
 
@@ -521,6 +588,11 @@ def run_sync():
         }
         result = push_to_cloud(token, sync_data)
         logger.info(f"Cloud sync result: {result}")
+
+        # Step 4b: Push outstanding bills
+        logger.info("Pushing outstanding bills...")
+        outstanding_result = push_outstanding(token, outstanding)
+        logger.info(f"Outstanding sync result: {outstanding_result}")
 
         # Step 5: Auto-create user accounts for new parties & agents
         logger.info("Checking for new user accounts...")
