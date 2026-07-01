@@ -12,6 +12,7 @@ class OutstandingBill(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     party_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    agent_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     bill_no: Mapped[str] = mapped_column(String(50), nullable=False)
     bill_date: Mapped[date] = mapped_column(Date, nullable=False)
     total_amount: Mapped[float] = mapped_column(Float, nullable=False)

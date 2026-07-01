@@ -12,14 +12,16 @@ async def get_outstanding_bills(
 ) -> OutstandingListResponse:
     """Get outstanding bills based on user role:
     - Party: sees only their own outstanding
-    - Agent: sees outstanding for ALL parties
+    - Agent: sees only outstanding for parties assigned to them
     - Admin: sees everything
     """
     query = select(OutstandingBill)
 
     if user.role == "party":
         query = query.where(OutstandingBill.party_code == user.party_code)
-    # Agent and Admin see all outstanding bills (no filter)
+    elif user.role == "agent":
+        query = query.where(OutstandingBill.agent_code == user.agent_code)
+    # Admin sees all
 
     query = query.order_by(OutstandingBill.due_date.asc())
 

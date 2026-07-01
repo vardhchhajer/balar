@@ -351,7 +351,8 @@ def fetch_outstanding(conn):
                     WHERE rb.BillNo = CAST(si.Sal_Inv_Bill_No AS NVARCHAR(50))
                       AND rb.Lgr_Id = si.Lgr_Id), 0) AS amount_outstanding,
             DATEADD(DAY, ISNULL(si.Sal_CrDays, 30), si.Sal_Inv_Vdate) AS due_date,
-            lm.Lgr_name AS party_name
+            lm.Lgr_name AS party_name,
+            CAST(si.Agent_Id AS VARCHAR(50)) AS agent_code
         FROM SALES_INVOICE si
         LEFT JOIN LEDGER_MASTER lm ON si.Lgr_Id = lm.Lgr_Id
         WHERE si.Sal_Inv_Vdate >= DATEADD(YEAR, -1, GETDATE())
@@ -374,6 +375,7 @@ def fetch_outstanding(conn):
             "amount_outstanding": float(row[5]) if row[5] else 0,
             "due_date": date_to_str(row[6]),
             "description": str(row[7] or "").strip(),
+            "agent_code": str(row[8] or "").strip(),
         })
     logger.info(f"Fetched {len(bills)} outstanding bills")
     return bills
