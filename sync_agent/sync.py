@@ -92,7 +92,20 @@ def fetch_orders(conn):
                AND (sod.Cancel = 0 OR sod.Cancel IS NULL)) AS OrderedBales,
             (SELECT ISNULL(SUM(sod.DeliveredBales), 0) FROM SALES_ORDER_DETAIL sod
              WHERE sod.Sal_Order_Id = so.Sal_Order_Id
-               AND (sod.Cancel = 0 OR sod.Cancel IS NULL)) AS DeliveredBales
+               AND (sod.Cancel = 0 OR sod.Cancel IS NULL)) AS DeliveredBales,
+            (SELECT ISNULL(SUM(si2.Sal_Inv_NetTotal), 0)
+             FROM SALES_INVOICE si2
+             WHERE si2.Sal_Inv_Id IN (
+                 SELECT DISTINCT sid2.Sal_Inv_Id
+                 FROM SALES_INVOICE_DETAIL sid2
+                 WHERE sid2.Sal_Order_Id = so.Sal_Order_Id
+             )) AS Net_Total_With_GST,
+            (SELECT STUFF((
+                 SELECT DISTINCT ', ' + CAST(si3.Sal_Inv_Bill_No AS VARCHAR(20))
+                 FROM SALES_INVOICE si3
+                 JOIN SALES_INVOICE_DETAIL sid3 ON si3.Sal_Inv_Id = sid3.Sal_Inv_Id
+                 WHERE sid3.Sal_Order_Id = so.Sal_Order_Id
+                 FOR XML PATH('')), 1, 2, '')) AS Invoice_Nos
         FROM SALES_ORDER so
         LEFT JOIN LEDGER_MASTER lm ON so.Lgr_Id = lm.Lgr_Id
         WHERE so.Order_Date >= DATEADD(YEAR, -1, GETDATE())
@@ -104,6 +117,8 @@ def fetch_orders(conn):
         order_date = date_to_str(row[6])
         ordered_bales = float(row[10]) if row[10] else 0
         delivered_bales = float(row[11]) if row[11] else 0
+        net_total_with_gst = float(row[12]) if row[12] else 0
+        invoice_nos = str(row[13] or "").strip()
 
         if row[8]:  # Stop flag
             dispatch_status = "Stopped"
@@ -135,6 +150,8 @@ def fetch_orders(conn):
             "narration": str(row[9] or "").strip(),
             "ordered_bales": ordered_bales,
             "delivered_bales": delivered_bales,
+            "net_total": net_total_with_gst,
+            "invoice_no": invoice_nos if invoice_nos else None,
         })
     logger.info(f"Fetched {len(orders)} orders")
     return orders
@@ -475,15 +492,10 @@ def run_sync():
         # Items keyed by Sal_Order_Id (erp_order_id)
         items_str_keys = {str(k): v for k, v in order_items.items()}
 
-        # Total amount per order — ONLY from invoice (Sal_Inv_Amount).
-        # Pending orders (no invoice) get total_amount=0 because the ERP
-        # does not store a pre-computed order value (rate is per-piece but
-        # pieces-per-bale is unknown until packing/dispatch).
+        # Total amount per order = Sal_Inv_NetTotal (final bill with GST)
+        # from all invoices linked to this order. 0 for pending orders.
         for order in orders:
-            erp_id = order["erp_order_id"]
-            items_for_order = order_items.get(erp_id, [])
-            total = sum(item["amount"] for item in items_for_order)
-            order["total_amount"] = total
+            order["total_amount"] = order["net_total"]
 
         logger.info(f"Prepared {len(orders)} orders for sync (all included)")
 
