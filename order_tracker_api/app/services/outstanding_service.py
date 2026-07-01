@@ -2,19 +2,26 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.outstanding import OutstandingBill
+from app.models.user import AppUser
 from app.schemas.outstanding import OutstandingBillResponse, OutstandingListResponse
 
 
 async def get_outstanding_bills(
     db: AsyncSession,
-    party_code: str,
+    user: AppUser,
 ) -> OutstandingListResponse:
-    """Get all outstanding bills for a party."""
-    query = (
-        select(OutstandingBill)
-        .where(OutstandingBill.party_code == party_code)
-        .order_by(OutstandingBill.due_date.asc())
-    )
+    """Get outstanding bills based on user role:
+    - Party: sees only their own outstanding
+    - Agent: sees outstanding for ALL parties
+    - Admin: sees everything
+    """
+    query = select(OutstandingBill)
+
+    if user.role == "party":
+        query = query.where(OutstandingBill.party_code == user.party_code)
+    # Agent and Admin see all outstanding bills (no filter)
+
+    query = query.order_by(OutstandingBill.due_date.asc())
 
     result = await db.execute(query)
     bills = result.scalars().all()

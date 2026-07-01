@@ -146,7 +146,7 @@ async def get_sync_status(
     if not sync:
         return SyncStatusResponse(last_sync_time=None, status="never", records_synced=0, error_message=None, triggered_by=None)
     return SyncStatusResponse(
-        last_sync_time=sync.last_sync_time.isoformat() if sync.last_sync_time else None,
+        last_sync_time=(sync.last_sync_time.isoformat() + "Z") if sync.last_sync_time else None,
         status=sync.status,
         records_synced=sync.records_synced,
         error_message=sync.error_message,

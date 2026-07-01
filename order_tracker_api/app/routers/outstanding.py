@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,7 +16,7 @@ router = APIRouter(prefix="/outstanding", tags=["Outstanding"])
     "/",
     response_model=OutstandingListResponse,
     status_code=status.HTTP_200_OK,
-    summary="List all outstanding bills for the authenticated user's party",
+    summary="List outstanding bills based on user role",
 )
 async def list_outstanding(
     current_user: AppUser = Depends(get_current_user),
@@ -22,5 +24,5 @@ async def list_outstanding(
 ):
     return await get_outstanding_bills(
         db=db,
-        party_code=current_user.party_code,
+        user=current_user,
     )

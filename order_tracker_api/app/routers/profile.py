@@ -50,6 +50,6 @@ async def get_sync_info(
     if not sync or not sync.last_sync_time:
         return SyncInfoResponse(last_sync_time=None, status="never")
     return SyncInfoResponse(
-        last_sync_time=sync.last_sync_time.isoformat(),
+        last_sync_time=sync.last_sync_time.isoformat() + "Z",
         status=sync.status,
     )

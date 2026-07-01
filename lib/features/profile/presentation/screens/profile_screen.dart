@@ -130,7 +130,7 @@ class ProfileScreen extends ConsumerWidget {
 
   String _formatSyncTime(String isoTime) {
     try {
-      final dt = DateTime.parse(isoTime);
+      final dt = DateTime.parse(isoTime).toLocal();
       final now = DateTime.now();
       final diff = now.difference(dt);
       if (diff.inMinutes < 1) return 'Just now';
