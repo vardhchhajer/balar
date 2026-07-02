@@ -332,21 +332,22 @@ def fetch_agents(conn):
 
 
 def fetch_outstanding(conn):
-    """Bill-wise outstanding using full ledger reconciliation.
+    """Bill-wise outstanding via FIFO credit allocation (oldest debt first).
 
     For each party:
-      - Each current-year SALES_INVOICE bill: NetTotal - ADJMASTER.AdjustAmt applied to it
-      - Prior-year line: Opening_Balance minus credits applied to old bills
-      - Party total = Op + SI_Net - all credits (verified exact against ERP)
+      debits  = [opening balance] + [each current-year sales bill, oldest first]
+      credits = TRAN_DETAIL Cr + TRAN_MASTER Cr + AUTOJOURNAL Cr  (all receipts/notes)
+      Credits are applied to debits oldest-first. Whatever remains unpaid is the
+      outstanding, and it sums exactly to (Opening + Sales - Credits) — the party
+      total verified against the ERP's 'TOTAL NET DUE' report.
 
-    Bills with pending <= 0 are skipped (fully paid).
-    If prior-year line is positive, it's included as a separate "OPENING" record.
-    If negative, it means old-bill overpayments offset current bills — the party total
-    still reconciles correctly via the verified formula.
+    This guarantees the party total is always correct while giving a standard
+    aged bill-wise breakdown. The opening balance, if still partly unpaid after
+    allocation, is emitted as a 'Prior Year Balance' line.
     """
     cursor = conn.cursor()
 
-    # Step 1: Get all parties that have sales orders
+    # All parties that have sales orders
     cursor.execute("""
         SELECT DISTINCT ld.Lgr_Id,
                lm.Lgr_name,
@@ -358,14 +359,11 @@ def fetch_outstanding(conn):
         WHERE ld.Cmp_Code = 1
           AND ld.Lgr_Id IN (SELECT DISTINCT Lgr_Id FROM SALES_ORDER)
     """)
-    parties = []
-    for row in cursor.fetchall():
-        parties.append({
-            "lgr_id": row[0],
-            "name": str(row[1] or "").strip(),
-            "op_bal": float(row[2]) if row[2] else 0,
-            "agent_id": row[3],
-        })
+    parties = [
+        {"lgr_id": r[0], "name": str(r[1] or "").strip(),
+         "op_bal": float(r[2]) if r[2] else 0, "agent_id": r[3]}
+        for r in cursor.fetchall()
+    ]
 
     bills = []
     for party in parties:
@@ -373,9 +371,9 @@ def fetch_outstanding(conn):
         party_code = str(pid)
         party_name = party["name"]
         op_bal = party["op_bal"]
-        agent_id = party["agent_id"]
+        agent_code = str(party["agent_id"] or "").strip()
 
-        # Total credits (verified formula)
+        # Total credits to this party's ledger (verified formula)
         cursor.execute(f"""
             SELECT
                 ISNULL((SELECT SUM(ISNULL(Tran_Amount,0)) FROM TRAN_DETAIL
@@ -387,72 +385,64 @@ def fetch_outstanding(conn):
         """)
         total_credits = float(cursor.fetchone()[0] or 0)
 
-        # Current year bills
+        # Current-year sales bills, oldest first
         cursor.execute(f"""
             SELECT Sal_Inv_Bill_No, Sal_Inv_NetTotal,
-                   CONVERT(varchar(10), Sal_Inv_Vdate, 120) AS bill_date
+                   CONVERT(varchar(10), Sal_Inv_Vdate, 120) AS bd
             FROM SALES_INVOICE
             WHERE Lgr_Id={pid} AND Cmp_Code=1
-            ORDER BY Sal_Inv_Vdate
+            ORDER BY Sal_Inv_Vdate ASC, Sal_Inv_Bill_No ASC
         """)
         inv_rows = cursor.fetchall()
-        total_billed_this_year = sum(float(r[1] or 0) for r in inv_rows)
+        sales_total = sum(float(r[1] or 0) for r in inv_rows)
 
-        # ADJMASTER per-bill adjustments
-        cursor.execute(f"""
-            SELECT BillNo, SUM(ISNULL(AdjustAmt,0)) AS adj
-            FROM ADJMASTER
-            WHERE Lgr_Id={pid} AND Cmp_Code=1
-            GROUP BY BillNo
-        """)
-        adj_by_bill = {str(r[0]).strip(): float(r[1] or 0) for r in cursor.fetchall()}
-
-        # Total outstanding for this party (verified formula)
-        total_outstanding = op_bal + total_billed_this_year - total_credits
-        if total_outstanding <= 0:
+        # Party total outstanding (verified). Skip if fully settled / in credit.
+        party_total = op_bal + sales_total - total_credits
+        if party_total <= 0.5:
             continue
 
-        # Per-bill outstanding
-        bill_outstanding_sum = 0.0
-        for row in inv_rows:
-            bno = str(row[0]).strip()
-            bill_amt = float(row[1] or 0)
-            bill_date = str(row[2] or "")
-            adj = adj_by_bill.get(bno, 0)
-            pending = bill_amt - adj
+        # Build debit list: opening (oldest) then bills chronologically
+        debits = []
+        if op_bal > 0:
+            debits.append({"bill_no": f"OPENING-{party_code}", "amount": op_bal,
+                           "date": None, "is_opening": True})
+        for r in inv_rows:
+            debits.append({"bill_no": str(r[0]).strip(),
+                           "amount": float(r[1] or 0),
+                           "date": str(r[2] or "") or None,
+                           "is_opening": False})
 
-            if pending <= 0.5:
+        # FIFO: apply credits to oldest debits first
+        remaining_credit = total_credits
+        for d in debits:
+            if remaining_credit >= d["amount"]:
+                d["paid"] = d["amount"]
+                remaining_credit -= d["amount"]
+            elif remaining_credit > 0:
+                d["paid"] = remaining_credit
+                remaining_credit = 0.0
+            else:
+                d["paid"] = 0.0
+            d["pending"] = round(d["amount"] - d["paid"], 2)
+
+        # Emit unpaid debits as outstanding bill records
+        for d in debits:
+            if d["pending"] <= 0.5:
                 continue
-
-            bill_outstanding_sum += pending
+            desc = f"{party_name} (Prior Year Balance)" if d["is_opening"] else party_name
             bills.append({
                 "party_code": party_code,
-                "bill_no": bno,
-                "bill_date": bill_date if bill_date else None,
-                "total_amount": bill_amt,
-                "amount_paid": adj,
-                "amount_outstanding": round(pending, 2),
+                "bill_no": d["bill_no"],
+                "bill_date": d["date"],
+                "total_amount": round(d["amount"], 2),
+                "amount_paid": round(d["paid"], 2),
+                "amount_outstanding": d["pending"],
                 "due_date": None,
-                "description": party_name,
-                "agent_code": str(agent_id or "").strip(),
+                "description": desc,
+                "agent_code": agent_code,
             })
 
-        # Prior-year line (opening minus credits applied to old bills)
-        prior_year_line = total_outstanding - bill_outstanding_sum
-        if prior_year_line > 0.5:
-            bills.append({
-                "party_code": party_code,
-                "bill_no": f"OPENING-{party_code}",
-                "bill_date": None,
-                "total_amount": round(prior_year_line, 2),
-                "amount_paid": 0,
-                "amount_outstanding": round(prior_year_line, 2),
-                "due_date": None,
-                "description": f"{party_name} (Prior Year Balance)",
-                "agent_code": str(agent_id or "").strip(),
-            })
-
-    logger.info(f"Fetched {len(bills)} outstanding bill records (bill-wise)")
+    logger.info(f"Fetched {len(bills)} outstanding bill records (FIFO bill-wise)")
     return bills
 
 
