@@ -332,52 +332,61 @@ def fetch_agents(conn):
 
 
 def fetch_outstanding(conn):
-    """Fetch bill-wise outstanding per party.
-    Outstanding = Sal_Inv_NetTotal - any receipts recorded in RECEIPT_BILLDETAIL.
-    Currently RECEIPT_BILLDETAIL is empty so all invoiced bills are fully outstanding."""
+    """Fetch per-party outstanding balance from LEDGER_DETAIL.
+    
+    Lgr_Cl_Bal (closing balance) is the real outstanding calculated by the ERP:
+    = Opening Balance + Total Sales - Total Receipts
+    
+    This is the single source of truth — it includes all payments, adjustments,
+    credit notes, and opening balances. No bill-level guessing needed.
+    
+    We also get the opening balance and transaction totals for context.
+    Only show parties with Debit closing balance (they owe money).
+    """
     cursor = conn.cursor()
     cursor.execute("""
         SELECT
-            LTRIM(RTRIM(CAST(si.Lgr_Id AS VARCHAR(50)))) AS party_code,
-            CAST(si.Sal_Inv_Bill_No AS VARCHAR(50)) AS bill_no,
-            si.Sal_Inv_Vdate AS bill_date,
-            si.Sal_Inv_NetTotal AS total_amount,
-            ISNULL((SELECT SUM(rb.Amount)
-                    FROM RECEIPT_BILLDETAIL rb
-                    WHERE rb.BillNo = CAST(si.Sal_Inv_Bill_No AS NVARCHAR(50))
-                      AND rb.Lgr_Id = si.Lgr_Id), 0) AS amount_paid,
-            si.Sal_Inv_NetTotal - ISNULL((SELECT SUM(rb.Amount)
-                    FROM RECEIPT_BILLDETAIL rb
-                    WHERE rb.BillNo = CAST(si.Sal_Inv_Bill_No AS NVARCHAR(50))
-                      AND rb.Lgr_Id = si.Lgr_Id), 0) AS amount_outstanding,
-            DATEADD(DAY, ISNULL(si.Sal_CrDays, 30), si.Sal_Inv_Vdate) AS due_date,
+            LTRIM(RTRIM(CAST(ld.Lgr_Id AS VARCHAR(50)))) AS party_code,
             lm.Lgr_name AS party_name,
-            CAST(si.Agent_Id AS VARCHAR(50)) AS agent_code
-        FROM SALES_INVOICE si
-        LEFT JOIN LEDGER_MASTER lm ON si.Lgr_Id = lm.Lgr_Id
-        WHERE si.Sal_Inv_Vdate >= DATEADD(YEAR, -1, GETDATE())
-          AND si.Sal_Inv_NetTotal > 0
-          AND si.Flag = 'S'
-          AND (si.Sal_Inv_NetTotal - ISNULL((SELECT SUM(rb.Amount)
-                    FROM RECEIPT_BILLDETAIL rb
-                    WHERE rb.BillNo = CAST(si.Sal_Inv_Bill_No AS NVARCHAR(50))
-                      AND rb.Lgr_Id = si.Lgr_Id), 0)) > 0
-        ORDER BY si.Sal_Inv_Vdate DESC
+            ld.Lgr_Op_Bal AS opening_balance,
+            ld.Lgr_Total_Dr_Bal AS total_sales,
+            ld.Lgr_Total_Cr_Bal AS total_received,
+            ld.Lgr_Cl_Bal AS closing_balance,
+            ld.Lgr_Cl_DrCr AS dr_cr,
+            (SELECT TOP 1 so.Agent_Id FROM SALES_ORDER so
+             WHERE so.Lgr_Id = ld.Lgr_Id
+             ORDER BY so.Order_Date DESC) AS agent_id
+        FROM LEDGER_DETAIL ld
+        JOIN LEDGER_MASTER lm ON ld.Lgr_Id = lm.Lgr_Id
+        WHERE ld.cmp_code = 1
+          AND ld.Lgr_Cl_DrCr = 'D'
+          AND ld.Lgr_Cl_Bal > 0
+          AND ld.Lgr_Id IN (SELECT DISTINCT Lgr_Id FROM SALES_ORDER)
+        ORDER BY ld.Lgr_Cl_Bal DESC
     """)
     bills = []
     for row in cursor.fetchall():
+        party_code = str(row[0] or "").strip()
+        party_name = str(row[1] or "").strip()
+        opening = float(row[2]) if row[2] else 0
+        total_sales = float(row[3]) if row[3] else 0
+        total_received = float(row[4]) if row[4] else 0
+        closing = float(row[5]) if row[5] else 0
+        agent_id = row[7]
+
+        # One "bill" entry per party representing their total outstanding
         bills.append({
-            "party_code": str(row[0] or "").strip(),
-            "bill_no": str(row[1] or "").strip(),
-            "bill_date": date_to_str(row[2]),
-            "total_amount": float(row[3]) if row[3] else 0,
-            "amount_paid": float(row[4]) if row[4] else 0,
-            "amount_outstanding": float(row[5]) if row[5] else 0,
-            "due_date": date_to_str(row[6]),
-            "description": str(row[7] or "").strip(),
-            "agent_code": str(row[8] or "").strip(),
+            "party_code": party_code,
+            "bill_no": f"BAL-{party_code}",
+            "bill_date": date_to_str(datetime.now()),
+            "total_amount": opening + total_sales,
+            "amount_paid": total_received,
+            "amount_outstanding": closing,
+            "due_date": None,
+            "description": party_name,
+            "agent_code": str(agent_id or "").strip(),
         })
-    logger.info(f"Fetched {len(bills)} outstanding bills")
+    logger.info(f"Fetched outstanding for {len(bills)} parties")
     return bills
 
 
