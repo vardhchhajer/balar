@@ -2,7 +2,7 @@ class OutstandingBillModel {
   final int id;
   final String partyCode;
   final String billNo;
-  final String billDate;
+  final String? billDate;
   final double totalAmount;
   final double amountPaid;
   final double amountOutstanding;
@@ -13,7 +13,7 @@ class OutstandingBillModel {
     required this.id,
     required this.partyCode,
     required this.billNo,
-    required this.billDate,
+    this.billDate,
     required this.totalAmount,
     required this.amountPaid,
     required this.amountOutstanding,
@@ -26,7 +26,7 @@ class OutstandingBillModel {
         id: json['id'] as int,
         partyCode: json['party_code'] as String? ?? '',
         billNo: json['bill_no'] as String,
-        billDate: json['bill_date'] as String,
+        billDate: json['bill_date'] as String?,
         totalAmount: (json['total_amount'] as num).toDouble(),
         amountPaid: (json['amount_paid'] as num).toDouble(),
         amountOutstanding: (json['amount_outstanding'] as num).toDouble(),
@@ -35,6 +35,9 @@ class OutstandingBillModel {
       );
 
   String get partyName => description ?? 'Unknown Party';
+
+  /// True if this is a prior-year opening balance line
+  bool get isOpeningBalance => billNo.startsWith('OPENING-');
 }
 
 class OutstandingListResponse {

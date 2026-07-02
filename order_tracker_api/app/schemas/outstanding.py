@@ -10,7 +10,7 @@ class OutstandingBillResponse(BaseModel):
     id: int
     party_code: str
     bill_no: str
-    bill_date: date
+    bill_date: Optional[date] = None
     total_amount: float
     amount_paid: float
     amount_outstanding: float
@@ -18,7 +18,7 @@ class OutstandingBillResponse(BaseModel):
     description: Optional[str] = None
 
     @field_serializer("bill_date")
-    def serialize_bill_date(self, v: date) -> str:
+    def serialize_bill_date(self, v: Optional[date]) -> Optional[str]:
         return v.isoformat() if v else None
 
     @field_serializer("due_date")

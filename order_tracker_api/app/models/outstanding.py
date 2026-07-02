@@ -14,7 +14,7 @@ class OutstandingBill(Base):
     party_code: Mapped[str] = mapped_column(String(50), nullable=False)
     agent_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     bill_no: Mapped[str] = mapped_column(String(50), nullable=False)
-    bill_date: Mapped[date] = mapped_column(Date, nullable=False)
+    bill_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     total_amount: Mapped[float] = mapped_column(Float, nullable=False)
     amount_paid: Mapped[float] = mapped_column(Float, default=0.0)
     amount_outstanding: Mapped[float] = mapped_column(Float, nullable=False)

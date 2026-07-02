@@ -332,71 +332,127 @@ def fetch_agents(conn):
 
 
 def fetch_outstanding(conn):
-    """Per-party outstanding using full ledger reconciliation.
+    """Bill-wise outstanding using full ledger reconciliation.
 
-    Formula (verified exact against 3 parties in ERP's 'TOTAL NET DUE' report):
-      Outstanding = Opening_Balance + Sales_Invoice_NetTotal
-                    - TRAN_DETAIL credits - TRAN_MASTER credits - AUTOJOURNAL credits
+    For each party:
+      - Each current-year SALES_INVOICE bill: NetTotal - ADJMASTER.AdjustAmt applied to it
+      - Prior-year line: Opening_Balance minus credits applied to old bills
+      - Party total = Op + SI_Net - all credits (verified exact against ERP)
 
-    This captures ALL credits (bank receipts, credit notes, sales returns, journal
-    adjustments, discount auto-entries) regardless of source table.
+    Bills with pending <= 0 are skipped (fully paid).
+    If prior-year line is positive, it's included as a separate "OPENING" record.
+    If negative, it means old-bill overpayments offset current bills — the party total
+    still reconciles correctly via the verified formula.
     """
     cursor = conn.cursor()
+
+    # Step 1: Get all parties that have sales orders
     cursor.execute("""
-        SELECT
-            LTRIM(RTRIM(CAST(ld.Lgr_Id AS VARCHAR(50)))) AS party_code,
-            lm.Lgr_name AS party_name,
-            ISNULL(ld.Lgr_Op_Bal, 0) AS op_bal,
-            ISNULL((SELECT SUM(ISNULL(si.Sal_Inv_NetTotal, 0))
-                    FROM SALES_INVOICE si
-                    WHERE si.Lgr_Id = ld.Lgr_Id AND si.Cmp_Code = 1), 0) AS si_net,
-            ISNULL((SELECT SUM(ISNULL(td.Tran_Amount, 0))
-                    FROM TRAN_DETAIL td
-                    WHERE td.Tran_Detail_Id = ld.Lgr_Id AND td.Tran_DrCr = 'C' AND td.Cmp_Code = 1), 0) AS td_cr,
-            ISNULL((SELECT SUM(ISNULL(tm.Tran_Amount, 0))
-                    FROM TRAN_MASTER tm
-                    WHERE tm.Tran_Master_Id = ld.Lgr_Id AND tm.Tran_DrCr = 'C' AND tm.Cmp_Code = 1), 0) AS tm_cr,
-            ISNULL((SELECT SUM(ISNULL(aj.CrAmount, 0))
-                    FROM AUTOJOURNAL aj
-                    WHERE aj.Lgr_Id = ld.Lgr_Id AND aj.Cmp_Code = 1), 0) AS aj_cr,
-            (SELECT TOP 1 so.Agent_Id FROM SALES_ORDER so
-             WHERE so.Lgr_Id = ld.Lgr_Id
-             ORDER BY so.Order_Date DESC) AS agent_id
+        SELECT DISTINCT ld.Lgr_Id,
+               lm.Lgr_name,
+               ISNULL(ld.Lgr_Op_Bal, 0) AS op_bal,
+               (SELECT TOP 1 so.Agent_Id FROM SALES_ORDER so
+                WHERE so.Lgr_Id = ld.Lgr_Id ORDER BY so.Order_Date DESC) AS agent_id
         FROM LEDGER_DETAIL ld
         JOIN LEDGER_MASTER lm ON ld.Lgr_Id = lm.Lgr_Id
         WHERE ld.Cmp_Code = 1
           AND ld.Lgr_Id IN (SELECT DISTINCT Lgr_Id FROM SALES_ORDER)
     """)
-    bills = []
+    parties = []
     for row in cursor.fetchall():
-        party_code = str(row[0] or "").strip()
-        party_name = str(row[1] or "").strip()
-        op_bal = float(row[2]) if row[2] else 0
-        si_net = float(row[3]) if row[3] else 0
-        td_cr = float(row[4]) if row[4] else 0
-        tm_cr = float(row[5]) if row[5] else 0
-        aj_cr = float(row[6]) if row[6] else 0
-        agent_id = row[7]
+        parties.append({
+            "lgr_id": row[0],
+            "name": str(row[1] or "").strip(),
+            "op_bal": float(row[2]) if row[2] else 0,
+            "agent_id": row[3],
+        })
 
-        total_billed = op_bal + si_net
-        total_received = td_cr + tm_cr + aj_cr
-        outstanding = total_billed - total_received
+    bills = []
+    for party in parties:
+        pid = party["lgr_id"]
+        party_code = str(pid)
+        party_name = party["name"]
+        op_bal = party["op_bal"]
+        agent_id = party["agent_id"]
 
-        if outstanding <= 0:
+        # Total credits (verified formula)
+        cursor.execute(f"""
+            SELECT
+                ISNULL((SELECT SUM(ISNULL(Tran_Amount,0)) FROM TRAN_DETAIL
+                        WHERE Tran_Detail_Id={pid} AND Tran_DrCr='C' AND Cmp_Code=1), 0) +
+                ISNULL((SELECT SUM(ISNULL(Tran_Amount,0)) FROM TRAN_MASTER
+                        WHERE Tran_Master_Id={pid} AND Tran_DrCr='C' AND Cmp_Code=1), 0) +
+                ISNULL((SELECT SUM(ISNULL(CrAmount,0)) FROM AUTOJOURNAL
+                        WHERE Lgr_Id={pid} AND Cmp_Code=1), 0)
+        """)
+        total_credits = float(cursor.fetchone()[0] or 0)
+
+        # Current year bills
+        cursor.execute(f"""
+            SELECT Sal_Inv_Bill_No, Sal_Inv_NetTotal,
+                   CONVERT(varchar(10), Sal_Inv_Vdate, 120) AS bill_date
+            FROM SALES_INVOICE
+            WHERE Lgr_Id={pid} AND Cmp_Code=1
+            ORDER BY Sal_Inv_Vdate
+        """)
+        inv_rows = cursor.fetchall()
+        total_billed_this_year = sum(float(r[1] or 0) for r in inv_rows)
+
+        # ADJMASTER per-bill adjustments
+        cursor.execute(f"""
+            SELECT BillNo, SUM(ISNULL(AdjustAmt,0)) AS adj
+            FROM ADJMASTER
+            WHERE Lgr_Id={pid} AND Cmp_Code=1
+            GROUP BY BillNo
+        """)
+        adj_by_bill = {str(r[0]).strip(): float(r[1] or 0) for r in cursor.fetchall()}
+
+        # Total outstanding for this party (verified formula)
+        total_outstanding = op_bal + total_billed_this_year - total_credits
+        if total_outstanding <= 0:
             continue
 
-        bills.append({
-            "party_code": party_code,
-            "bill_no": f"BAL-{party_code}",
-            "bill_date": date_to_str(datetime.now()),
-            "total_amount": total_billed,
-            "amount_paid": total_received,
-            "amount_outstanding": outstanding,
-            "due_date": None,
-            "description": party_name,
-            "agent_code": str(agent_id or "").strip(),
-        })
-    logger.info(f"Fetched outstanding for {len(bills)} parties (ledger reconciliation)")
+        # Per-bill outstanding
+        bill_outstanding_sum = 0.0
+        for row in inv_rows:
+            bno = str(row[0]).strip()
+            bill_amt = float(row[1] or 0)
+            bill_date = str(row[2] or "")
+            adj = adj_by_bill.get(bno, 0)
+            pending = bill_amt - adj
+
+            if pending <= 0.5:
+                continue
+
+            bill_outstanding_sum += pending
+            bills.append({
+                "party_code": party_code,
+                "bill_no": bno,
+                "bill_date": bill_date if bill_date else None,
+                "total_amount": bill_amt,
+                "amount_paid": adj,
+                "amount_outstanding": round(pending, 2),
+                "due_date": None,
+                "description": party_name,
+                "agent_code": str(agent_id or "").strip(),
+            })
+
+        # Prior-year line (opening minus credits applied to old bills)
+        prior_year_line = total_outstanding - bill_outstanding_sum
+        if prior_year_line > 0.5:
+            bills.append({
+                "party_code": party_code,
+                "bill_no": f"OPENING-{party_code}",
+                "bill_date": None,
+                "total_amount": round(prior_year_line, 2),
+                "amount_paid": 0,
+                "amount_outstanding": round(prior_year_line, 2),
+                "due_date": None,
+                "description": f"{party_name} (Prior Year Balance)",
+                "agent_code": str(agent_id or "").strip(),
+            })
+
+    logger.info(f"Fetched {len(bills)} outstanding bill records (bill-wise)")
     return bills
 
 

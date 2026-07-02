@@ -369,7 +369,7 @@ async def receive_outstanding_data(
                 party_code=party_code,
                 agent_code=str(bill_data.get("agent_code", "") or ""),
                 bill_no=bill_data.get("bill_no", ""),
-                bill_date=datetime.fromisoformat(bill_data["bill_date"]).date() if bill_data.get("bill_date") else datetime.now().date(),
+                bill_date=datetime.fromisoformat(bill_data["bill_date"]).date() if bill_data.get("bill_date") else None,
                 total_amount=float(bill_data.get("total_amount", 0)),
                 amount_paid=float(bill_data.get("amount_paid", 0)),
                 amount_outstanding=float(bill_data.get("amount_outstanding", 0)),

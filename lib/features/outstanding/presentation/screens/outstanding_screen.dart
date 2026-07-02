@@ -43,10 +43,13 @@ class OutstandingScreen extends ConsumerWidget {
       return _buildEmptyState();
     }
 
-    // Group bills by party
+    // Group bills by party (strip "(Prior Year Balance)" suffix from OPENING lines)
     final Map<String, List<OutstandingBillModel>> grouped = {};
     for (final bill in data.bills) {
-      grouped.putIfAbsent(bill.partyName, () => []).add(bill);
+      final name = bill.isOpeningBalance
+          ? bill.partyName.replaceAll(' (Prior Year Balance)', '')
+          : bill.partyName;
+      grouped.putIfAbsent(name, () => []).add(bill);
     }
 
     // Sort parties by total outstanding (descending)
@@ -121,7 +124,7 @@ class OutstandingScreen extends ConsumerWidget {
                 style: AppTextStyles.heading1.copyWith(color: AppColors.error),
               ),
               const SizedBox(height: 4),
-              Text('Your account balance', style: AppTextStyles.bodySmall),
+              Text('${data.bills.length} bill${data.bills.length == 1 ? '' : 's'}', style: AppTextStyles.bodySmall),
             ],
           ),
         ),
@@ -195,7 +198,7 @@ class _PartyOutstandingCardState extends State<_PartyOutstandingCard> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Outstanding balance',
+                          '${widget.bills.length} bill${widget.bills.length == 1 ? '' : 's'}',
                           style: AppTextStyles.bodySmall,
                         ),
                       ],
@@ -224,8 +227,9 @@ class _PartyOutstandingCardState extends State<_PartyOutstandingCard> {
           ),
           if (_expanded) ...[
             const Divider(height: 1),
+            // Summary row
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
                 children: [
                   Expanded(
@@ -261,6 +265,10 @@ class _PartyOutstandingCardState extends State<_PartyOutstandingCard> {
                 ],
               ),
             ),
+            // Individual bills
+            const Divider(height: 1),
+            ...widget.bills.map((bill) => _BillRow(bill: bill)),
+            const SizedBox(height: 8),
           ],
         ],
       ),
@@ -275,6 +283,8 @@ class _BillCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isOpening = bill.isOpeningBalance;
+
     return Card(
       elevation: 1,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -289,7 +299,7 @@ class _BillCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    bill.partyName,
+                    isOpening ? 'Prior Year Balance' : 'Bill #${bill.billNo}',
                     style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -302,6 +312,13 @@ class _BillCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (!isOpening && bill.billDate != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                bill.billDate!,
+                style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary),
+              ),
+            ],
             const SizedBox(height: 10),
             Row(
               children: [
@@ -309,7 +326,7 @@ class _BillCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Total Billed', style: AppTextStyles.caption),
+                      Text('Billed', style: AppTextStyles.caption),
                       Text('\u20B9${bill.totalAmount.toStringAsFixed(0)}', style: AppTextStyles.bodyMedium),
                     ],
                   ),
@@ -327,7 +344,7 @@ class _BillCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text('Outstanding', style: AppTextStyles.caption),
+                      Text('Pending', style: AppTextStyles.caption),
                       Text(
                         '\u20B9${bill.amountOutstanding.toStringAsFixed(0)}',
                         style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600, color: AppColors.error),
@@ -339,6 +356,67 @@ class _BillCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Compact bill row shown inside expanded party cards (agent/admin view)
+class _BillRow extends StatelessWidget {
+  final OutstandingBillModel bill;
+
+  const _BillRow({required this.bill});
+
+  @override
+  Widget build(BuildContext context) {
+    final isOpening = bill.isOpeningBalance;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isOpening ? 'Prior Year Balance' : 'Bill #${bill.billNo}',
+                  style: AppTextStyles.bodySmall.copyWith(fontWeight: FontWeight.w500),
+                ),
+                if (!isOpening && bill.billDate != null)
+                  Text(
+                    bill.billDate!,
+                    style: AppTextStyles.caption.copyWith(color: AppColors.textSecondary),
+                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              '\u20B9${bill.totalAmount.toStringAsFixed(0)}',
+              style: AppTextStyles.caption,
+              textAlign: TextAlign.right,
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              '\u20B9${bill.amountPaid.toStringAsFixed(0)}',
+              style: AppTextStyles.caption.copyWith(color: AppColors.success),
+              textAlign: TextAlign.right,
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              '\u20B9${bill.amountOutstanding.toStringAsFixed(0)}',
+              style: AppTextStyles.caption.copyWith(fontWeight: FontWeight.w600, color: AppColors.error),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
       ),
     );
   }
