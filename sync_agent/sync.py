@@ -332,52 +332,71 @@ def fetch_agents(conn):
 
 
 def fetch_outstanding(conn):
-    """Per-party outstanding from ONACCOUNT (the ERP's pending-bills tracker).
+    """Per-party outstanding using full ledger reconciliation.
 
-    Net outstanding = SUM(PENDING) - SUM(PARTCASHAMT) - SUM(PARTADJAMT).
-    This matches the ERP's 'TOTAL NET DUE' outstanding report (verified against
-    RAM KIRTI PVT LTD). It excludes the prior-year opening balance, unlike the
-    ledger closing balance (Lgr_Cl_Bal) which was over-stating outstanding.
+    Formula (verified exact against 3 parties in ERP's 'TOTAL NET DUE' report):
+      Outstanding = Opening_Balance + Sales_Invoice_NetTotal
+                    - TRAN_DETAIL credits - TRAN_MASTER credits - AUTOJOURNAL credits
+
+    This captures ALL credits (bank receipts, credit notes, sales returns, journal
+    adjustments, discount auto-entries) regardless of source table.
     """
     cursor = conn.cursor()
     cursor.execute("""
         SELECT
-            LTRIM(RTRIM(CAST(oa.PARTY_ID AS VARCHAR(50)))) AS party_code,
+            LTRIM(RTRIM(CAST(ld.Lgr_Id AS VARCHAR(50)))) AS party_code,
             lm.Lgr_name AS party_name,
-            SUM(ISNULL(oa.PENDING, 0))     AS pending,
-            SUM(ISNULL(oa.PARTCASHAMT, 0)) AS cash,
-            SUM(ISNULL(oa.PARTADJAMT, 0))  AS adj,
+            ISNULL(ld.Lgr_Op_Bal, 0) AS op_bal,
+            ISNULL((SELECT SUM(ISNULL(si.Sal_Inv_NetTotal, 0))
+                    FROM SALES_INVOICE si
+                    WHERE si.Lgr_Id = ld.Lgr_Id AND si.Cmp_Code = 1), 0) AS si_net,
+            ISNULL((SELECT SUM(ISNULL(td.Tran_Amount, 0))
+                    FROM TRAN_DETAIL td
+                    WHERE td.Tran_Detail_Id = ld.Lgr_Id AND td.Tran_DrCr = 'C' AND td.Cmp_Code = 1), 0) AS td_cr,
+            ISNULL((SELECT SUM(ISNULL(tm.Tran_Amount, 0))
+                    FROM TRAN_MASTER tm
+                    WHERE tm.Tran_Master_Id = ld.Lgr_Id AND tm.Tran_DrCr = 'C' AND tm.Cmp_Code = 1), 0) AS tm_cr,
+            ISNULL((SELECT SUM(ISNULL(aj.CrAmount, 0))
+                    FROM AUTOJOURNAL aj
+                    WHERE aj.Lgr_Id = ld.Lgr_Id AND aj.Cmp_Code = 1), 0) AS aj_cr,
             (SELECT TOP 1 so.Agent_Id FROM SALES_ORDER so
-             WHERE so.Lgr_Id = oa.PARTY_ID
+             WHERE so.Lgr_Id = ld.Lgr_Id
              ORDER BY so.Order_Date DESC) AS agent_id
-        FROM ONACCOUNT oa
-        JOIN LEDGER_MASTER lm ON oa.PARTY_ID = lm.Lgr_Id
-        WHERE oa.PARTY_ID IN (SELECT DISTINCT Lgr_Id FROM SALES_ORDER)
-        GROUP BY oa.PARTY_ID, lm.Lgr_name
-        HAVING SUM(ISNULL(oa.PENDING,0)) - SUM(ISNULL(oa.PARTCASHAMT,0)) - SUM(ISNULL(oa.PARTADJAMT,0)) > 0
+        FROM LEDGER_DETAIL ld
+        JOIN LEDGER_MASTER lm ON ld.Lgr_Id = lm.Lgr_Id
+        WHERE ld.Cmp_Code = 1
+          AND ld.Lgr_Id IN (SELECT DISTINCT Lgr_Id FROM SALES_ORDER)
     """)
     bills = []
     for row in cursor.fetchall():
         party_code = str(row[0] or "").strip()
         party_name = str(row[1] or "").strip()
-        pending = float(row[2]) if row[2] else 0
-        cash = float(row[3]) if row[3] else 0
-        adj = float(row[4]) if row[4] else 0
-        agent_id = row[5]
-        outstanding = pending - cash - adj
+        op_bal = float(row[2]) if row[2] else 0
+        si_net = float(row[3]) if row[3] else 0
+        td_cr = float(row[4]) if row[4] else 0
+        tm_cr = float(row[5]) if row[5] else 0
+        aj_cr = float(row[6]) if row[6] else 0
+        agent_id = row[7]
+
+        total_billed = op_bal + si_net
+        total_received = td_cr + tm_cr + aj_cr
+        outstanding = total_billed - total_received
+
+        if outstanding <= 0:
+            continue
 
         bills.append({
             "party_code": party_code,
             "bill_no": f"BAL-{party_code}",
             "bill_date": date_to_str(datetime.now()),
-            "total_amount": pending,
-            "amount_paid": cash + adj,
+            "total_amount": total_billed,
+            "amount_paid": total_received,
             "amount_outstanding": outstanding,
             "due_date": None,
             "description": party_name,
             "agent_code": str(agent_id or "").strip(),
         })
-    logger.info(f"Fetched outstanding for {len(bills)} parties (from ONACCOUNT)")
+    logger.info(f"Fetched outstanding for {len(bills)} parties (ledger reconciliation)")
     return bills
 
 
