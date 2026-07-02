@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:baalar/core/constants/app_colors.dart';
 import 'package:baalar/core/constants/app_text_styles.dart';
-import 'package:baalar/core/utils/date_formatter.dart';
 import 'package:baalar/features/outstanding/data/models/outstanding_model.dart';
 import 'package:baalar/features/outstanding/providers/outstanding_provider.dart';
 import 'package:baalar/features/auth/providers/auth_provider.dart';
@@ -74,7 +73,7 @@ class OutstandingScreen extends ConsumerWidget {
                 style: AppTextStyles.heading1.copyWith(color: AppColors.error),
               ),
               const SizedBox(height: 4),
-              Text('${sortedParties.length} parties \u2022 ${data.total} bills', style: AppTextStyles.bodySmall),
+              Text('${sortedParties.length} parties', style: AppTextStyles.bodySmall),
             ],
           ),
         ),
@@ -122,7 +121,7 @@ class OutstandingScreen extends ConsumerWidget {
                 style: AppTextStyles.heading1.copyWith(color: AppColors.error),
               ),
               const SizedBox(height: 4),
-              Text('${data.total} bills pending', style: AppTextStyles.bodySmall),
+              Text('Your account balance', style: AppTextStyles.bodySmall),
             ],
           ),
         ),
@@ -196,7 +195,7 @@ class _PartyOutstandingCardState extends State<_PartyOutstandingCard> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${widget.bills.length} bills pending',
+                          'Outstanding balance',
                           style: AppTextStyles.bodySmall,
                         ),
                       ],
@@ -226,28 +225,40 @@ class _PartyOutstandingCardState extends State<_PartyOutstandingCard> {
           if (_expanded) ...[
             const Divider(height: 1),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Column(
-                children: widget.bills.map((bill) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Bill #${bill.billNo}', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w500)),
-                            Text(DateFormatter.formatDate(bill.billDate), style: AppTextStyles.caption),
-                          ],
-                        ),
-                      ),
-                      Text(
-                        '\u20B9${bill.amountOutstanding.toStringAsFixed(0)}',
-                        style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600, color: AppColors.error),
-                      ),
-                    ],
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Total Billed', style: AppTextStyles.caption),
+                        Text('\u20B9${widget.bills.fold<double>(0, (s, b) => s + b.totalAmount).toStringAsFixed(0)}', style: AppTextStyles.bodyMedium),
+                      ],
+                    ),
                   ),
-                )).toList(),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Received', style: AppTextStyles.caption),
+                        Text('\u20B9${widget.bills.fold<double>(0, (s, b) => s + b.amountPaid).toStringAsFixed(0)}', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.success)),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text('Outstanding', style: AppTextStyles.caption),
+                        Text(
+                          '\u20B9${widget.totalOutstanding.toStringAsFixed(0)}',
+                          style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600, color: AppColors.error),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -276,20 +287,17 @@ class _BillCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Bill #${bill.billNo}', style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.w600)),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: AppColors.cancelledBg,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                Expanded(
                   child: Text(
-                    'Pending',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.cancelledText,
-                    ),
+                    bill.partyName,
+                    style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Text(
+                  '\u20B9${bill.amountOutstanding.toStringAsFixed(0)}',
+                  style: AppTextStyles.bodyLarge.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.error,
                   ),
                 ),
               ],
@@ -301,7 +309,7 @@ class _BillCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Bill Amount', style: AppTextStyles.caption),
+                      Text('Total Billed', style: AppTextStyles.caption),
                       Text('\u20B9${bill.totalAmount.toStringAsFixed(0)}', style: AppTextStyles.bodyMedium),
                     ],
                   ),
@@ -310,7 +318,7 @@ class _BillCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Paid', style: AppTextStyles.caption),
+                      Text('Received', style: AppTextStyles.caption),
                       Text('\u20B9${bill.amountPaid.toStringAsFixed(0)}', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.success)),
                     ],
                   ),
@@ -327,15 +335,6 @@ class _BillCard extends StatelessWidget {
                     ],
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Bill Date: ${DateFormatter.formatDate(bill.billDate)}', style: AppTextStyles.caption),
-                if (bill.dueDate != null)
-                  Text('Due: ${DateFormatter.formatDate(bill.dueDate)}', style: AppTextStyles.caption.copyWith(color: AppColors.error)),
               ],
             ),
           ],

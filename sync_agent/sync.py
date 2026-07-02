@@ -332,61 +332,52 @@ def fetch_agents(conn):
 
 
 def fetch_outstanding(conn):
-    """Fetch per-party outstanding balance from LEDGER_DETAIL.
-    
-    Lgr_Cl_Bal (closing balance) is the real outstanding calculated by the ERP:
-    = Opening Balance + Total Sales - Total Receipts
-    
-    This is the single source of truth — it includes all payments, adjustments,
-    credit notes, and opening balances. No bill-level guessing needed.
-    
-    We also get the opening balance and transaction totals for context.
-    Only show parties with Debit closing balance (they owe money).
+    """Per-party outstanding from ONACCOUNT (the ERP's pending-bills tracker).
+
+    Net outstanding = SUM(PENDING) - SUM(PARTCASHAMT) - SUM(PARTADJAMT).
+    This matches the ERP's 'TOTAL NET DUE' outstanding report (verified against
+    RAM KIRTI PVT LTD). It excludes the prior-year opening balance, unlike the
+    ledger closing balance (Lgr_Cl_Bal) which was over-stating outstanding.
     """
     cursor = conn.cursor()
     cursor.execute("""
         SELECT
-            LTRIM(RTRIM(CAST(ld.Lgr_Id AS VARCHAR(50)))) AS party_code,
+            LTRIM(RTRIM(CAST(oa.PARTY_ID AS VARCHAR(50)))) AS party_code,
             lm.Lgr_name AS party_name,
-            ld.Lgr_Op_Bal AS opening_balance,
-            ld.Lgr_Total_Dr_Bal AS total_sales,
-            ld.Lgr_Total_Cr_Bal AS total_received,
-            ld.Lgr_Cl_Bal AS closing_balance,
-            ld.Lgr_Cl_DrCr AS dr_cr,
+            SUM(ISNULL(oa.PENDING, 0))     AS pending,
+            SUM(ISNULL(oa.PARTCASHAMT, 0)) AS cash,
+            SUM(ISNULL(oa.PARTADJAMT, 0))  AS adj,
             (SELECT TOP 1 so.Agent_Id FROM SALES_ORDER so
-             WHERE so.Lgr_Id = ld.Lgr_Id
+             WHERE so.Lgr_Id = oa.PARTY_ID
              ORDER BY so.Order_Date DESC) AS agent_id
-        FROM LEDGER_DETAIL ld
-        JOIN LEDGER_MASTER lm ON ld.Lgr_Id = lm.Lgr_Id
-        WHERE ld.cmp_code = 1
-          AND ld.Lgr_Cl_DrCr = 'D'
-          AND ld.Lgr_Cl_Bal > 0
-          AND ld.Lgr_Id IN (SELECT DISTINCT Lgr_Id FROM SALES_ORDER)
-        ORDER BY ld.Lgr_Cl_Bal DESC
+        FROM ONACCOUNT oa
+        JOIN LEDGER_MASTER lm ON oa.PARTY_ID = lm.Lgr_Id
+        WHERE oa.PARTY_ID IN (SELECT DISTINCT Lgr_Id FROM SALES_ORDER)
+        GROUP BY oa.PARTY_ID, lm.Lgr_name
+        HAVING SUM(ISNULL(oa.PENDING,0)) - SUM(ISNULL(oa.PARTCASHAMT,0)) - SUM(ISNULL(oa.PARTADJAMT,0)) > 0
     """)
     bills = []
     for row in cursor.fetchall():
         party_code = str(row[0] or "").strip()
         party_name = str(row[1] or "").strip()
-        opening = float(row[2]) if row[2] else 0
-        total_sales = float(row[3]) if row[3] else 0
-        total_received = float(row[4]) if row[4] else 0
-        closing = float(row[5]) if row[5] else 0
-        agent_id = row[7]
+        pending = float(row[2]) if row[2] else 0
+        cash = float(row[3]) if row[3] else 0
+        adj = float(row[4]) if row[4] else 0
+        agent_id = row[5]
+        outstanding = pending - cash - adj
 
-        # One "bill" entry per party representing their total outstanding
         bills.append({
             "party_code": party_code,
             "bill_no": f"BAL-{party_code}",
             "bill_date": date_to_str(datetime.now()),
-            "total_amount": opening + total_sales,
-            "amount_paid": total_received,
-            "amount_outstanding": closing,
+            "total_amount": pending,
+            "amount_paid": cash + adj,
+            "amount_outstanding": outstanding,
             "due_date": None,
             "description": party_name,
             "agent_code": str(agent_id or "").strip(),
         })
-    logger.info(f"Fetched outstanding for {len(bills)} parties")
+    logger.info(f"Fetched outstanding for {len(bills)} parties (from ONACCOUNT)")
     return bills
 
 
