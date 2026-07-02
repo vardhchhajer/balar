@@ -256,6 +256,7 @@ async def receive_sync_data(
                 # Update existing order
                 existing_order.party_code = str(order_data.get("party_code", ""))
                 existing_order.party_name = order_data.get("party_name", "")
+                existing_order.agent_code = str(order_data.get("agent_id", "") or "")
                 existing_order.invoice_no = order_data.get("invoice_no")
                 existing_order.tracking_no = order_data.get("tracking_no")
                 existing_order.order_no = order_data.get("order_no", f"ORD-{erp_id}") or f"ORD-{erp_id}"
@@ -279,6 +280,7 @@ async def receive_sync_data(
                     erp_order_id=erp_id,
                     party_code=str(order_data.get("party_code", "")),
                     party_name=order_data.get("party_name", ""),
+                    agent_code=str(order_data.get("agent_id", "") or ""),
                     order_no=order_data.get("order_no", f"ORD-{erp_id}") or f"ORD-{erp_id}",
                     order_date=datetime.fromisoformat(order_data["order_date"]).date() if order_data.get("order_date") else datetime.now().date(),
                     dispatch_status="Stopped" if order_data.get("is_stopped") else (order_data.get("flag") or "Pending"),

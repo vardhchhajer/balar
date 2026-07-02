@@ -31,11 +31,10 @@ async def get_orders(
     if user.role == "party":
         query = query.where(Order.party_code == user.party_code)
     elif user.role == "agent":
-        # Agent sees all parties linked to their agent_code
-        # For now, filter by agent_code field on orders or show all parties assigned
+        # Agent sees only orders for parties assigned to them
+        query = query.where(Order.agent_code == user.agent_code)
         if party_filter:
             query = query.where(Order.party_code == party_filter)
-        # If no filter, agent sees all orders (will be scoped when ERP sync adds agent mapping)
     # Admin sees everything, no filter needed
 
     if search:
@@ -58,5 +57,8 @@ async def get_order_by_id(db: AsyncSession, order_id: int, user: AppUser) -> Ord
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
     # Party can only see own orders
     if user.role == "party" and order.party_code != user.party_code:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+    # Agent can only see orders for their parties
+    if user.role == "agent" and order.agent_code != user.agent_code:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
     return order
