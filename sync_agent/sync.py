@@ -334,21 +334,41 @@ def fetch_agents(conn):
 def fetch_outstanding(conn):
     """Per-party outstanding using the vendor's PROC_OUTSTANDING logic.
 
-    Outstanding = SUM(PARTYDETAIL.BILL_AMOUNT)
-                - SUM(ADJMASTER.ADJUSTAMT + TOTAL + INTEREST - INTREC)  [receipts applied to bills]
-                - SUM(TRAN_DETAIL.PARTAMOUNT) credits [BR,CR,SR,YSR,BP,CP,DN,CN,J - unallocated on-account]
-                - SUM(TRAN_MASTER.TRAN_AMOUNT) for SR/GCN/GDN with unadjusted detail PARTAMOUNT
-                - SUM(ADVANCE_ENTRY.PARTAMOUNT)
-    Restricted to parties in the SUNDRY DEBTORS ledger group (receivable side only).
+    Exact replication of:
+      PROC_OUTSTANDING '1','Acc2026_2027.Dbo.',1,2,'##',<date>,1,0,'0','Acc2025_2026.Dbo.'
 
-    Verified exact against:
-        MAHALAXMI (5141) = 24,42,88,233
-        RAM KIRTI (20133) = 4,80,62,253
-        PRAGYA (7370) = 2,40,79,884
-        GOVERDHAN (2879) = 76,74,924
-        KHUSHBOO (18518) = 57,82,164
+    Formula:
+      bills = SUM(PARTYDETAIL.BILL_AMOUNT - ADJMASTER receipts) per bill, floor >= 0 (all JOBFLAG)
+      minus  TRAN_DETAIL.PARTAMOUNT credits (BR/CR/YSR/BP/CP/DN/CN/J, SHOWPARTAMT=1/NULL)
+      minus  SR/GCN/GDN master TRAN_AMOUNT where TD.PARTAMOUNT>0, TM.SHOWPARTAMT=1/NULL  [curr]
+      minus  ADVANCE_ENTRY.PARTAMOUNT  [curr]
+      minus  same SR/GCN/GDN from previous year DB  [prev]
+      minus  ADVANCE_ENTRY.PARTAMOUNT  [prev]
+
+    Restricted to SUNDRY DEBTORS ledger group (receivables only).
     """
     cursor = conn.cursor()
+
+    # Connect to previous year DB if configured
+    prev_db = os.getenv("PREV_SQL_DATABASE", "")
+    prev_cursor = None
+    prev_conn = None
+    if prev_db:
+        try:
+            prev_cs = (
+                f"DRIVER={{SQL Server}};"
+                f"SERVER={os.getenv('SQL_SERVER', 'INDIASERVER')};"
+                f"DATABASE={prev_db};"
+                f"UID={os.getenv('SQL_USER', 'balar_sync')};"
+                f"PWD={os.getenv('SQL_PASSWORD', '')};"
+                f"ApplicationIntent=ReadOnly;"
+            )
+            prev_conn = pyodbc.connect(prev_cs, readonly=True)
+            prev_conn.execute("SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED")
+            prev_cursor = prev_conn.cursor()
+            logger.info(f"Connected to previous year DB: {prev_db}")
+        except Exception as e:
+            logger.warning(f"Could not connect to previous year DB {prev_db}: {e}")
 
     # All parties in SUNDRY DEBTORS group with sales orders
     cursor.execute("""
@@ -369,6 +389,81 @@ def fetch_outstanding(conn):
         for r in cursor.fetchall()
     ]
 
+    def _bills_adj(cur, pid):
+        """PARTYDETAIL bills net of ADJMASTER receipts, each bill floored at 0."""
+        try:
+            cur.execute(f"""
+                SELECT SUM(CASE WHEN net > 0 THEN net ELSE 0 END) FROM (
+                    SELECT ISNULL(PD.BILL_AMOUNT,0)
+                           - ISNULL(am.adj,0) - ISNULL(am.tot,0)
+                           - ISNULL(am.interest,0) + ISNULL(am.intrec,0) AS net
+                    FROM PARTYDETAIL PD
+                    LEFT JOIN (
+                        SELECT BILLNO, FLAG, VCODE, CMP_CODE,
+                               SUM(ISNULL(ADJUSTAMT,0)) AS adj,
+                               SUM(ISNULL(TOTAL,0))     AS tot,
+                               SUM(ISNULL(INTEREST,0))  AS interest,
+                               SUM(ISNULL(INTREC,0))    AS intrec
+                        FROM ADJMASTER
+                        WHERE LGR_ID={pid} AND CMP_CODE=1
+                        GROUP BY BILLNO, FLAG, VCODE, CMP_CODE
+                    ) am ON am.BILLNO=PD.BILL_NO AND am.FLAG=PD.JOBFLAG
+                          AND am.CMP_CODE=PD.CMP_CODE AND am.VCODE=PD.VCODE
+                    WHERE PD.LGR_ID={pid} AND PD.CMP_CODE=1
+                ) t
+            """)
+            r = cur.fetchone()
+            return float(r[0]) if r and r[0] is not None else 0.0
+        except Exception:
+            return 0.0
+
+    def _onacc_d(cur, pid):
+        """TRAN_DETAIL.PARTAMOUNT unallocated credits."""
+        try:
+            cur.execute(f"""
+                SELECT ISNULL(SUM(ISNULL(PARTAMOUNT,0)),0) FROM TRAN_DETAIL
+                WHERE Tran_Detail_Id={pid} AND CMP_CODE=1 AND TRAN_DRCR='C'
+                  AND ISNULL(PARTAMOUNT,0)>0
+                  AND (SHOWPARTAMT=1 OR SHOWPARTAMT IS NULL)
+                  AND (REC_TRANS=0 OR REC_TRANS IS NULL)
+                  AND TRAN_TYPE IN ('BR','CR','YSR','BP','CP','DN','CN','J')
+            """)
+            r = cur.fetchone()
+            return float(r[0]) if r and r[0] is not None else 0.0
+        except Exception:
+            return 0.0
+
+    def _onacc_m(cur, pid):
+        """SR/GCN/GDN via TM.TRAN_AMOUNT where TD.PARTAMOUNT>0 and TM.SHOWPARTAMT=1/NULL."""
+        try:
+            cur.execute(f"""
+                SELECT ISNULL(SUM(
+                    CASE WHEN TD.TRAN_TYPE='J' THEN
+                        CASE WHEN TD.TRAN_DRCR='C' THEN TD.PARTAMOUNT ELSE 0 END
+                    ELSE TM.TRAN_AMOUNT END),0)
+                FROM TRAN_DETAIL TD
+                INNER JOIN TRAN_MASTER TM ON TM.TRAN_ID=TD.TRAN_ID
+                    AND TM.TRAN_TYPE=TD.TRAN_TYPE AND TD.CMP_CODE=TM.CMP_CODE
+                WHERE TM.Tran_Master_Id={pid} AND TD.CMP_CODE=1
+                  AND TD.PARTAMOUNT>0
+                  AND (TM.SHOWPARTAMT=1 OR TM.SHOWPARTAMT IS NULL)
+                  AND TM.TRAN_TYPE IN ('SR','GCN','GDN')
+                  AND (TM.REC_TRANS=0 OR TM.REC_TRANS IS NULL)
+                  AND TM.TRAN_DRCR='C'
+            """)
+            r = cur.fetchone()
+            return float(r[0]) if r and r[0] is not None else 0.0
+        except Exception:
+            return 0.0
+
+    def _adv(cur, pid):
+        try:
+            cur.execute(f"SELECT ISNULL(SUM(ISNULL(PARTAMOUNT,0)),0) FROM ADVANCE_ENTRY WHERE LGR_ID={pid} AND CMP_CODE=1")
+            r = cur.fetchone()
+            return float(r[0]) if r and r[0] is not None else 0.0
+        except Exception:
+            return 0.0
+
     bills_out = []
     for party in parties:
         pid = party["lgr_id"]
@@ -376,61 +471,18 @@ def fetch_outstanding(conn):
         party_name = party["name"]
         agent_code = str(party["agent_id"] or "").strip()
 
-        # PARTYDETAIL bills (sales flag only)
-        cursor.execute(f"""
-            SELECT ISNULL(SUM(ISNULL(pd.BILL_AMOUNT, 0)), 0)
-            FROM PARTYDETAIL pd
-            WHERE pd.LGR_ID = {pid} AND pd.CMP_CODE = 1 AND pd.JOBFLAG = 'S'
-        """)
-        bills = float(cursor.fetchone()[0] or 0)
+        # Current year
+        bills   = _bills_adj(cursor, pid)
+        onacc_d = _onacc_d(cursor, pid)
+        onacc_m = _onacc_m(cursor, pid)
+        adv     = _adv(cursor, pid)
 
-        # ADJMASTER receipts applied to bills
-        cursor.execute(f"""
-            SELECT ISNULL(SUM(
-                ISNULL(ADJUSTAMT,0) + ISNULL(TOTAL,0) + ISNULL(INTEREST,0) - ISNULL(INTREC,0)
-            ), 0)
-            FROM ADJMASTER
-            WHERE Lgr_Id = {pid} AND CMP_CODE = 1
-        """)
-        adj = float(cursor.fetchone()[0] or 0)
+        # Previous year on-account only (no bills from prev year)
+        onacc_dp = _onacc_d(prev_cursor, pid) if prev_cursor else 0.0
+        onacc_mp = _onacc_m(prev_cursor, pid) if prev_cursor else 0.0
+        adv_p    = _adv(prev_cursor, pid) if prev_cursor else 0.0
 
-        # Unallocated on-account: TRAN_DETAIL.PARTAMOUNT credits
-        cursor.execute(f"""
-            SELECT ISNULL(SUM(ISNULL(PARTAMOUNT, 0)), 0)
-            FROM TRAN_DETAIL
-            WHERE Tran_Detail_Id = {pid} AND CMP_CODE = 1
-              AND TRAN_DRCR = 'C'
-              AND ISNULL(PARTAMOUNT, 0) > 0
-              AND (SHOWPARTAMT = 1 OR SHOWPARTAMT IS NULL)
-              AND (REC_TRANS = 0 OR REC_TRANS IS NULL)
-              AND TRAN_TYPE IN ('BR','CR','SR','YSR','BP','CP','DN','CN','J')
-        """)
-        onacc_d = float(cursor.fetchone()[0] or 0)
-
-        # Master-side SR/GCN/GDN credits that have unadjusted PARTAMOUNT
-        cursor.execute(f"""
-            SELECT ISNULL(SUM(ISNULL(TM.TRAN_AMOUNT, 0)), 0)
-            FROM TRAN_MASTER TM
-            WHERE TM.Tran_Master_Id = {pid} AND TM.CMP_CODE = 1
-              AND TM.TRAN_DRCR = 'C'
-              AND TM.TRAN_TYPE IN ('SR', 'GCN', 'GDN')
-              AND EXISTS (
-                  SELECT 1 FROM TRAN_DETAIL TD
-                  WHERE TD.TRAN_ID = TM.TRAN_ID AND TD.TRAN_TYPE = TM.TRAN_TYPE
-                    AND TD.CMP_CODE = TM.CMP_CODE AND ISNULL(TD.PARTAMOUNT, 0) > 0
-              )
-        """)
-        onacc_m = float(cursor.fetchone()[0] or 0)
-
-        # Advance entries
-        cursor.execute(f"""
-            SELECT ISNULL(SUM(ISNULL(PARTAMOUNT, 0)), 0)
-            FROM ADVANCE_ENTRY
-            WHERE LGR_ID = {pid} AND CMP_CODE = 1
-        """)
-        adv = float(cursor.fetchone()[0] or 0)
-
-        outstanding = bills - adj - onacc_d - onacc_m - adv
+        outstanding = bills - onacc_d - onacc_m - adv - onacc_dp - onacc_mp - adv_p
 
         if outstanding <= 0.5:
             continue
@@ -446,6 +498,9 @@ def fetch_outstanding(conn):
             "description": party_name,
             "agent_code": agent_code,
         })
+
+    if prev_conn:
+        prev_conn.close()
 
     logger.info(f"Fetched outstanding for {len(bills_out)} parties (PROC_OUTSTANDING logic)")
     return bills_out
