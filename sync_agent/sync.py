@@ -464,6 +464,68 @@ def fetch_outstanding(conn):
         except Exception:
             return 0.0
 
+    # Pre-aggregate previous-year on-account data in bulk (one query each)
+    # to avoid per-party queries that would be slow over ~900 parties.
+    prev_onacc_d_map = {}  # pid -> float
+    prev_onacc_m_map = {}
+    prev_adv_map = {}
+    if prev_cursor:
+        try:
+            prev_cursor.execute("""
+                SELECT Tran_Detail_Id,
+                       SUM(ISNULL(PARTAMOUNT,0))
+                FROM TRAN_DETAIL
+                WHERE CMP_CODE=1 AND TRAN_DRCR='C'
+                  AND ISNULL(PARTAMOUNT,0)>0
+                  AND (SHOWPARTAMT=1 OR SHOWPARTAMT IS NULL)
+                  AND (REC_TRANS=0 OR REC_TRANS IS NULL)
+                  AND TRAN_TYPE IN ('BR','CR','YSR','BP','CP','DN','CN','J')
+                GROUP BY Tran_Detail_Id
+            """)
+            for r in prev_cursor.fetchall():
+                prev_onacc_d_map[r[0]] = float(r[1] or 0)
+        except Exception as e:
+            logger.warning(f"Prev DB onacc_d bulk query failed: {e}")
+
+        try:
+            prev_cursor.execute("""
+                SELECT TM.Tran_Master_Id,
+                       SUM(CASE WHEN TD.TRAN_TYPE='J' THEN
+                               CASE WHEN TD.TRAN_DRCR='C' THEN TD.PARTAMOUNT ELSE 0 END
+                           ELSE TM.TRAN_AMOUNT END)
+                FROM TRAN_DETAIL TD
+                INNER JOIN TRAN_MASTER TM ON TM.TRAN_ID=TD.TRAN_ID
+                    AND TM.TRAN_TYPE=TD.TRAN_TYPE AND TD.CMP_CODE=TM.CMP_CODE
+                WHERE TD.CMP_CODE=1
+                  AND TD.PARTAMOUNT>0
+                  AND (TM.SHOWPARTAMT=1 OR TM.SHOWPARTAMT IS NULL)
+                  AND TM.TRAN_TYPE IN ('SR','GCN','GDN')
+                  AND (TM.REC_TRANS=0 OR TM.REC_TRANS IS NULL)
+                  AND TM.TRAN_DRCR='C'
+                GROUP BY TM.Tran_Master_Id
+            """)
+            for r in prev_cursor.fetchall():
+                prev_onacc_m_map[r[0]] = float(r[1] or 0)
+        except Exception as e:
+            logger.warning(f"Prev DB onacc_m bulk query failed: {e}")
+
+        try:
+            prev_cursor.execute("""
+                SELECT LGR_ID, SUM(ISNULL(PARTAMOUNT,0))
+                FROM ADVANCE_ENTRY
+                WHERE CMP_CODE=1
+                GROUP BY LGR_ID
+            """)
+            for r in prev_cursor.fetchall():
+                prev_adv_map[r[0]] = float(r[1] or 0)
+        except Exception as e:
+            logger.warning(f"Prev DB advance bulk query failed: {e}")
+
+        logger.info(f"Pre-aggregated prev-year on-account: "
+                    f"{len(prev_onacc_d_map)} onacc_d, "
+                    f"{len(prev_onacc_m_map)} onacc_m, "
+                    f"{len(prev_adv_map)} advances")
+
     bills_out = []
     for party in parties:
         pid = party["lgr_id"]
@@ -477,10 +539,10 @@ def fetch_outstanding(conn):
         onacc_m = _onacc_m(cursor, pid)
         adv     = _adv(cursor, pid)
 
-        # Previous year on-account only (no bills from prev year)
-        onacc_dp = _onacc_d(prev_cursor, pid) if prev_cursor else 0.0
-        onacc_mp = _onacc_m(prev_cursor, pid) if prev_cursor else 0.0
-        adv_p    = _adv(prev_cursor, pid) if prev_cursor else 0.0
+        # Previous year on-account from pre-aggregated maps (fast, no per-party queries)
+        onacc_dp = prev_onacc_d_map.get(pid, 0.0)
+        onacc_mp = prev_onacc_m_map.get(pid, 0.0)
+        adv_p    = prev_adv_map.get(pid, 0.0)
 
         outstanding = bills - onacc_d - onacc_m - adv - onacc_dp - onacc_mp - adv_p
 
